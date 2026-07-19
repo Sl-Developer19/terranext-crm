@@ -1,0 +1,8 @@
+# Normalize all text files to LF in the repository (Windows-safe)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.pdf binary

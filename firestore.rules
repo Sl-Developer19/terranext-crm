@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// TerraNext Business OS — Firestore Security Rules
+// Strategy: Doc 10 §3 · Access truth table: Doc 18 (Firestore Rules Matrix)
+//
+// M1 baseline: DEFAULT DENY everywhere. Per-collection blocks are added
+// module-by-module, generated/verified against lib/rbac/permissions.ts
+// (condition C-1) with emulator allow+deny tests per Doc 18.
+//
+// Until the auth/RBAC foundation lands in this milestone, no client has any
+// read or write access. Platform collections (users, settings, auditLogs) are
+// written exclusively via the Admin SDK, which bypasses rules by design —
+// client access to them will be opened by explicit blocks with role predicates.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Deny-all default. Every business collection must add an explicit block
+    // above this wildcard in the same PR that introduces the collection
+    // (Doc 09 §4 PR checklist). Hard `delete` stays false everywhere (ADR-009).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+functions/node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# builds
+functions/lib/
+*.tsbuildinfo
+
+# testing
+coverage/
+
+# env — never commit real config (Doc 10: secrets discipline)
+.env
+.env.local
+.env.*.local
+
+# firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pglite-debug.log
+
+# misc
+.DS_Store
+*.pem

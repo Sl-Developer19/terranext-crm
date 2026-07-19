@@ -1,0 +1,70 @@
+{
+  "extends": ["next/core-web-vitals", "next/typescript"],
+  "plugins": ["boundaries"],
+  "settings": {
+    "boundaries/include": ["src/**/*"],
+    "boundaries/elements": [
+      { "type": "app", "pattern": "src/app/**/*" },
+      { "type": "features", "pattern": "src/features/*", "mode": "folder", "capture": ["feature"] },
+      { "type": "ui", "pattern": "src/components/ui/**/*" },
+      { "type": "layout", "pattern": "src/components/layout/**/*" },
+      { "type": "providers", "pattern": "src/components/providers/**/*" },
+      { "type": "lib", "pattern": "src/lib/**/*" },
+      { "type": "stores", "pattern": "src/stores/**/*" },
+      { "type": "types", "pattern": "src/types/**/*" },
+      { "type": "config", "pattern": "src/config/**/*" }
+    ]
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
+    ],
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "boundaries/element-types": [
+      "error",
+      {
+        "default": "disallow",
+        "message": "Import violates module boundaries (Doc 02 §5): ${file.type} may not import ${dependency.type}",
+        "rules": [
+          {
+            "from": "app",
+            "allow": ["features", "ui", "layout", "providers", "lib", "stores", "types", "config"]
+          },
+          {
+            "from": "features",
+            "allow": ["features", "ui", "lib", "stores", "types", "config"]
+          },
+          { "from": "ui", "allow": ["ui", "lib", "types"] },
+          { "from": "layout", "allow": ["layout", "ui", "lib", "stores", "types", "config"] },
+          { "from": "providers", "allow": ["providers", "ui", "lib", "stores", "types", "config"] },
+          { "from": "lib", "allow": ["lib", "types", "config"] },
+          { "from": "stores", "allow": ["lib", "types"] },
+          { "from": "config", "allow": ["types", "lib"] },
+          { "from": "types", "allow": ["types"] }
+        ]
+      }
+    ],
+    "boundaries/entry-point": [
+      "error",
+      {
+        "default": "allow",
+        "rules": [
+          {
+            "target": [["features", { "feature": "*" }]],
+            "allow": ["index.ts", "index.tsx"]
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/features/*/**/*"],
+      "rules": {
+        "boundaries/entry-point": "off"
+      }
+    }
+  ]
+}

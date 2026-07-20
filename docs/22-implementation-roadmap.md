@@ -8,7 +8,7 @@ Milestones sequenced by the dependency graph (Doc 01 §5, Doc 16 build-order). C
 ## M1 — Foundation Platform *(complexity: L)*
 
 **Objectives:** the substrate every module needs — auth, RBAC, audit, shell, design system, CI, environments.
-**Deliverables:** CRM scaffold (Doc 02 structure); Firebase wiring + **staging project (C-3)**; login + session middleware + email-link first-login + MFA enrollment (enforced roles per Doc 10); RBAC map + claims Functions + guards + `useCan`; **rules codegen + CI drift-check (C-1)**; `withAudit` plumbing; AppShell + core primitives (Doc 17 §1–2 subset); User Management screen (S50) end-to-end; rules + emulator deny-tests (Doc 18 obligations); CI pipeline (Doc 09 §6); ADR-001…012 committed; idle-timeout re-auth for high-privilege surfaces.
+**Deliverables:** CRM scaffold (Doc 02 structure); Firebase wiring + **staging project (C-3)**; login + session middleware + email-link first-login + MFA enrollment (enforced roles per Doc 10); RBAC map + claims Functions + guards + `useCan`; **rules codegen + CI drift-check (C-1)**; `withAudit` plumbing; AppShell + core primitives (Doc 17 §1–2 subset); User Management screen (S50) end-to-end; rules + emulator deny-tests (Doc 18 obligations); CI pipeline (Doc 09 §6); ADR-001…012 committed; idle-timeout re-auth for high-privilege surfaces ✅ *(M1-B, Doc 10 §1a)*.
 **Dependencies:** none (brand-independent — provisional tokens).
 **Acceptance:** admin provisions a user by email link; new user logs in, sees role-scoped nav; role change reflects ≤1h (immediately on disable); every mutation visible in audit screen; all rules deny-tests green; deploy to staging via CI.
 **Risks:** RR-01, RR-06, RR-07 all close here — this is the highest-leverage milestone.

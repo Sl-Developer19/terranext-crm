@@ -35,6 +35,14 @@ middleware verifies session cookie per request └─ invalid/expired → /login
 - Logout revokes refresh tokens (`revokeRefreshTokens`) + clears cookie. Disable user → status flip + token revocation → locked out within one request (middleware status check).
 - Login success/failure and logout are audited (`action: 'login'` on success/logout, plus the per-attempt `loginAttempts` register), feeding the System Access Log register (SOP 17.16).
 
+### 1a. Idle-Timeout Re-Auth (M1-B)
+
+- Applies only to the MFA-enforced roles (`system_admin`, `founder`, `finance` — `config/auth-security.ts` `MFA_REQUIRED_ROLES`, one shared definition of "high-privilege" for both MFA and idle enforcement).
+- Client tracks activity (`mousemove`/`keydown`/`scroll`/`click`/`touchstart`) via a Zustand store (`stores/idle-store.ts`); 15 minutes idle with no activity triggers a full-screen lock modal, with a 60-second warning toast beforehand (`config/idle-security.ts`).
+- The lock is **client-side UI state only** — the `__session` cookie and its 5-day expiry are untouched. `POST /api/auth/reauth` re-verifies the password against Identity Toolkit for the *current session's own account* (never a client-submitted email/uid), reusing the same brute-force lockout tiers as `/api/auth/login` (§1) — the lock screen cannot be brute-forced on a separate counter.
+- MFA is not re-challenged on every idle cycle (approved scope) — password-only re-auth, consistent with treating idle-lock as a presence check rather than a fresh sign-in.
+- Success is audited (`action: 'login'`, `context.reason: 'idle_reauth'`); failures follow the same generic, enumeration-resistant message as login.
+
 ## 2. Authorization Flow
 
 Request path for every mutation (fixed order, Doc 08 §5):

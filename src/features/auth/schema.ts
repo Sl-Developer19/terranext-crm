@@ -7,3 +7,11 @@ export const loginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
+
+/** Idle-timeout re-auth schema (M1-B) — password only, no email field (the
+ * session's own email is shown read-only and never re-submitted by the client). */
+export const reauthSchema = z.object({
+  password: z.string().min(1, 'Password is required'),
+});
+
+export type ReauthInput = z.infer<typeof reauthSchema>;

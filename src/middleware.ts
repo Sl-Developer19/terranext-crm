@@ -56,10 +56,12 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // Protect everything except Next internals, static assets, and the auth
-  // endpoints (login authenticates by password + lockout policy, session
-  // DELETE clears its own cookie — neither requires a valid session cookie).
+  // Protect everything except Next internals, static assets, and the auth /
+  // error-report endpoints (login authenticates by password + lockout
+  // policy, session DELETE clears its own cookie, error reports must work
+  // even without — or before — a valid session; none require the cookie
+  // this middleware enforces).
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/session|api/auth|.*\\.(?:svg|png|jpg|ico)).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/session|api/auth|api/errors|.*\\.(?:svg|png|jpg|ico)).*)',
   ],
 };

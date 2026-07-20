@@ -6,11 +6,10 @@
  *
  * Functions are exported here as they land per the M1+ plan:
  * user provisioning (provisionUser, setUserRole, setUserStatus) arrives with
- * the RBAC foundation; createLead with Milestone 2. Nothing is deployed from
- * this workspace until then — an empty export set is a valid deployable state.
+ * the RBAC foundation; createLead with Milestone 2.
  */
 import { setGlobalOptions } from 'firebase-functions/v2';
 
 setGlobalOptions({ region: 'asia-south1', maxInstances: 10 });
 
-export {};
+export { scheduledFirestoreExport } from './scheduled/firestore-export';

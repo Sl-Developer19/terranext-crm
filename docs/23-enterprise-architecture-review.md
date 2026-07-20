@@ -62,7 +62,7 @@ Stance: final adversarial pass before implementation is authorized. Scores are e
 
 ## 3. Binding Amendments from This Review
 
-1. **M1 additions:** Firestore PITR + scheduled exports; error reporting wired (client + server); audit-review digest job moved up from M8 where feasible.
+1. **M1 additions:** Firestore PITR + scheduled exports; error reporting wired (client + server); audit-review digest job moved up from M8 where feasible. ✅ *(M1-E: error reporting + `scheduledFirestoreExport` shipped, Doc 10 §8, Doc 19 §4/§4a; PITR + bucket/IAM are manual one-time gcloud steps in Doc 19 §4a — pending owner execution against the live project.)*
 2. **M4 acceptance additions:** low-end-device trainer flow test; amplification measurement.
 3. **Doc 09 PR template:** explicit "blueprints touched" line.
 4. **Owner decision requested:** two-tier workflow (full cycle for features, short-form for in-design changes) — recommended to keep rigor where it pays and velocity where it doesn't.

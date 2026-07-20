@@ -109,3 +109,12 @@ No direct client SDK uploads to arbitrary paths; the metadata doc is the authori
 - Reads: `system_admin` and `founder` only; the Audit Logs screen provides the SOP 17.16 registers as filtered views (Access Authorisation, System Access, Incident, Disposal).
 - Incident response: SOP 17.14 workflow (Identify → Contain → Report to Ops Manager/Founder → Investigate → Correct → Document) gets a runbook page in `docs/` at go-live; audit trail is the investigation substrate.
 - Consent: registration consent (text version + timestamp) stored on the lead (Doc 03) — data-protection posture depends on it.
+
+## 8. Observability (M1-E, Doc 23 §3 binding amendment)
+
+Audit logs answer "what happened to business data"; error reporting answers "what broke" — the two are deliberately separate (an error report is never a business mutation and carries no audit entry).
+
+- **Client:** `ErrorReportingProvider` (root layout) catches uncaught `window` errors and unhandled promise rejections; `app/error.tsx` / `app/global-error.tsx` catch React render errors. All three POST to `/api/errors/report` (unauthenticated by necessity — an error can occur before/without a session; `client-error-schema.ts` length-caps every field against payload abuse).
+- **Server:** `src/instrumentation.ts` `onRequestError` reports SSR/route-handler/server-action errors automatically. It is Node-runtime-only (`register()` gated on `NEXT_RUNTIME === 'nodejs'`) — middleware errors (Edge-only) are not covered, an accepted gap since `middleware.ts` does nothing beyond cookie verification.
+- **Functions:** `reportFunctionError` wraps caught failures in scheduled/trigger code so the dead-letter pattern (Doc 19 §5, RR-16) doesn't also make the failure invisible to Error Reporting.
+- **Backups:** Firestore PITR (continuous, 7-day) + `scheduledFirestoreExport` (weekly, Doc 19 §4) — manual one-time GCP setup in Doc 19 §4a (PITR enablement is a billing decision, not something CI/Functions enable silently).

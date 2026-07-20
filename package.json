@@ -31,6 +31,7 @@
     ]
   },
   "dependencies": {
+    "@google-cloud/error-reporting": "^3.0.6",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-avatar": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.4",

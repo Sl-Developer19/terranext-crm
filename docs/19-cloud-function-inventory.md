@@ -42,9 +42,36 @@ Every server-side function (Cloud Functions + the server actions that share the 
 
 | Function | Schedule | Behavior |
 |---|---|---|
+| `scheduledFirestoreExport` | weekly, Sun 02:00 IST | Doc 23 §3 binding amendment (M1-E): exports the whole default database to `gs://$FIRESTORE_EXPORT_BUCKET/scheduled/{timestamp}` via the Firestore Admin REST `:exportDocuments` endpoint (not wrapped by the Admin SDK). On failure: `reportFunctionError` (Cloud Error Reporting) + `systemEvents` doc (dead-letter pattern, §5) + re-throw so the scheduler's own `retryCount: 2` also engages. |
 | `markOverdueInstallments` | daily 01:00 IST | `pending` installments past dueDate → `overdue`; refresh `nextDueDate`; feeds pending-fee alerts |
 | `followUpDigest` | daily 08:00 IST | Per-assignee digest of today's `nextFollowUpAt` leads → communications (internal) |
 | *(reserved)* `retentionSweep` | — | Not built until Record Retention Register approved (ADR-009) |
+
+### 4a. Manual One-Time Setup (M1-E, Doc 23 §3)
+
+Neither PITR nor the export bucket/IAM grant can be created by application code — they're one-time project configuration. Run once against the production project (and again for the staging project once C-3 exists):
+
+```sh
+# 1. Enable Point-in-Time Recovery on the default database (continuous, last 7 days)
+gcloud firestore databases update --database='(default)' \
+  --enable-pitr --project=terranextglobal
+
+# 2. Create the weekly-export bucket (name must match FIRESTORE_EXPORT_BUCKET)
+gcloud storage buckets create gs://terranextglobal-firestore-exports \
+  --project=terranextglobal --location=asia-south1 --uniform-bucket-level-access
+
+# 3. Grant the Firestore service agent write access to that bucket
+gcloud storage buckets add-iam-policy-binding gs://terranextglobal-firestore-exports \
+  --member="serviceAccount:service-<PROJECT_NUMBER>@gcp-sa-firestore.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin"
+
+# 4. Grant the Cloud Functions runtime service account export permission
+gcloud projects add-iam-policy-binding terranextglobal \
+  --member="serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.importExportAdmin"
+```
+
+`<PROJECT_NUMBER>` is `363154846981` (`gcloud projects describe terranextglobal`). Steps 2–4 are a one-time grant; PITR (step 1) has an ongoing storage-cost implication and is a deliberate, owner-approved spend, not something Functions/CI enable silently.
 
 ## 5. Cross-Cutting Standards
 

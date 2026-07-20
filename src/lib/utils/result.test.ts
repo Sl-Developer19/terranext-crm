@@ -5,6 +5,8 @@ import {
   conflictError,
   ok,
   preconditionError,
+  rateLimitedError,
+  unauthenticatedError,
   unavailableError,
   unwrapOr,
   validationError,
@@ -36,11 +38,15 @@ describe('Result taxonomy', () => {
     }
   });
 
-  it('marks only unavailable as retryable', () => {
+  it('marks only time-bound codes (unavailable, rate_limited) as retryable', () => {
     const unavailable = unavailableError<never>();
+    const rateLimited = rateLimitedError<never>('Too many failed login attempts.');
     const conflict = conflictError<never>('Batch is full');
+    const unauthenticated = unauthenticatedError<never>();
     if (!unavailable.ok) expect(unavailable.error.retryable).toBe(true);
+    if (!rateLimited.ok) expect(rateLimited.error.retryable).toBe(true);
     if (!conflict.ok) expect(conflict.error.retryable).toBe(false);
+    if (!unauthenticated.ok) expect(unauthenticated.error.retryable).toBe(false);
   });
 
   it('unwrapOr falls back on failure', () => {
@@ -50,6 +56,8 @@ describe('Result taxonomy', () => {
   it('maps every error code to an HTTP status (Doc 20 §4)', () => {
     expect(ERROR_HTTP_STATUS.precondition).toBe(412);
     expect(ERROR_HTTP_STATUS.validation).toBe(422);
-    expect(Object.keys(ERROR_HTTP_STATUS)).toHaveLength(7);
+    expect(ERROR_HTTP_STATUS.unauthenticated).toBe(401);
+    expect(ERROR_HTTP_STATUS.rate_limited).toBe(429);
+    expect(Object.keys(ERROR_HTTP_STATUS)).toHaveLength(9);
   });
 });

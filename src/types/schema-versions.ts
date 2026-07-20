@@ -6,6 +6,9 @@ export const SCHEMA_VERSIONS = {
   users: 1,
   settings: 1,
   auditLogs: 1,
+  loginSecurity: 1,
+  loginAttempts: 1,
+  securityEvents: 1,
 } as const;
 
 export type VersionedCollection = keyof typeof SCHEMA_VERSIONS;

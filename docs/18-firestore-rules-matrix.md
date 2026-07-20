@@ -15,6 +15,7 @@ Per-collection access truth table. This document is the human-readable contract 
 | `settings/*` | all staff | AdminSDK | AdminSDK (system_admin caller) | — | `settings/roles` written by CI codegen only |
 | `counters/*` | AdminSDK | AdminSDK | AdminSDK | — | transaction-only |
 | `auditLogs` | founder, system_admin | staff (batch-coupled, `actorUid == auth.uid`, valid shape; `reason` required if action=`override`) + AdminSDK | **false — everyone** | system_admin (audited) | immutability absolute (ADR-007) |
+| `loginSecurity`, `loginAttempts`, `securityEvents` | **false — everyone** | AdminSDK only | **false — everyone** (AdminSDK transact on `loginSecurity` only) | — (register views via server-rendered admin screens later) | server-only ledger (ADR-013); explicit deny blocks in rules |
 | `academies`, `programmes` | all staff | ops_manager, coordinator (programmes); AdminSDK ok | same as create; `certificateRules` changes audited | — | archive via `status`, no delete |
 | `batches` | all staff (trainer: assigned enrich client-side; reads allowed — non-sensitive) | ops_manager, coordinator | ops_manager, coordinator; `enrolledCount` AdminSDK-only (`unchanged` for clients) | — | capacity invariant lives in allocation transaction (BR-04) |
 | `batches/*/sessions` | all staff | coordinator; trainer if `batch.trainerUid == uid` | same; `status→held` sets heldAt | — | trainer scope via `get(batch)` |

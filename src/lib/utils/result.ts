@@ -6,10 +6,12 @@
 
 export type AppErrorCode =
   | 'validation'
+  | 'unauthenticated'
   | 'permission'
   | 'not_found'
   | 'conflict'
   | 'precondition'
+  | 'rate_limited'
   | 'unavailable'
   | 'internal';
 
@@ -42,6 +44,14 @@ export function validationError<T = never>(
   message = 'Some fields need attention.',
 ): Result<T> {
   return err({ code: 'validation', message, fields, retryable: false });
+}
+
+export function unauthenticatedError<T = never>(message = 'Invalid email or password.'): Result<T> {
+  return err({ code: 'unauthenticated', message, retryable: false });
+}
+
+export function rateLimitedError<T = never>(message: string): Result<T> {
+  return err({ code: 'rate_limited', message, retryable: true });
 }
 
 export function permissionError<T = never>(
@@ -83,7 +93,9 @@ export function unwrapOr<T>(result: Result<T>, fallback: T): T {
 /** Maps the taxonomy to HTTP statuses for future REST exposure (Doc 20 §4). */
 export const ERROR_HTTP_STATUS: Record<AppErrorCode, number> = {
   validation: 422,
+  unauthenticated: 401,
   permission: 403,
+  rate_limited: 429,
   not_found: 404,
   conflict: 409,
   precondition: 412,

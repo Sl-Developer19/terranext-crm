@@ -48,6 +48,11 @@ interface BaseDoc {
 
 **`auditLogs/{id}`** — §6.
 
+**Login-security ledger (ADR-013, server-only, Admin-SDK writes, explicit deny-all rules):**
+`loginSecurity/{sha256(normalizedEmail)}` — `{ emailHash, failedAttempts, lastFailedAt, lockedUntil, lastSuccessfulLogin, lastLoginIp, lastUserAgent }` (transactional; no plain emails) ·
+`loginAttempts/{id}` — per-attempt access-log register (SOP 17.16): `{ at, email, emailHash, success, ip, userAgent, reason }`, append-only ·
+`securityEvents/{id}` — `{ at, type: 'LOGIN_LOCKOUT'|…, severity, emailHash, ip, userAgent, details }`, append-only. Field detail: Doc 14 §4b.
+
 ### 1.2 Catalogue
 
 **`academies/{id}`** — `{ name, slug, description, status: 'active'|'archived' }`

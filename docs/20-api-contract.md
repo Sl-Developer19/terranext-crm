@@ -14,8 +14,10 @@ type ServiceResult<T> =
         rule?: 'BR-01'|'BR-02'|'BR-03'|'BR-04'|'BR-09';  // code=precondition
         retryable: boolean } };
 
-type AppErrorCode = 'validation'|'permission'|'not_found'|'conflict'
-                  | 'precondition'|'unavailable'|'internal';
+type AppErrorCode = 'validation'|'unauthenticated'|'permission'|'not_found'|'conflict'
+                  | 'precondition'|'rate_limited'|'unavailable'|'internal';
+// ADR-013 additions: unauthenticated→401 (generic credential failure),
+// rate_limited→429 (lockout / rate limits; retryable, Retry-After header when known)
 ```
 
 Auth context is never part of the input schema — identity comes from the session/token; any client-supplied actor field is rejected by schema (`.strict()` everywhere).
@@ -42,6 +44,26 @@ Errors: validation only. Rate limit: 5/phone/day, 20/IP/hour → 429 (retryable:
 Contract stability note: the website deploys independently (ADR-002) — **breaking changes to this schema require a versioned path (`/v2/createLead`) and a coordinated website release.**
 
 ### `verifyCertificate` (HTTPS GET) — `{no, hash}` → `{ valid: boolean; programmeName?: string; issuedAt?: string }`. Invalid/revoked/missing are indistinguishable in output (no oracle).
+
+## 2b. Contracts — Authentication (route handlers, ADR-013)
+
+### `login` (HTTPS POST `/api/auth/login`) — the official authentication entry point
+
+```ts
+Input  = loginSchema;   // { email: string (trimmed, email), password: string (min 1) } — features/auth/schema.ts
+Output = { status: 'authenticated' }                       // + Set-Cookie __session (HttpOnly)
+       | { status: 'mfa_required'; message: string };      // challenge flow attaches when MFA ships
+Errors: validation (422, malformed body)
+      · unauthenticated (401, always "Invalid email or password." — unknown email,
+        wrong password, disabled and unprovisioned accounts are indistinguishable)
+      · rate_limited (429, "Too many failed login attempts. Try again in X seconds.",
+        Retry-After header; lockout tiers per config/auth-security.ts)
+      · unavailable (503, upstream/provider failure — no counter change).
+Side effects: loginSecurity transaction, loginAttempts register entry (every attempt),
+securityEvents on the 10th consecutive failure, auditLogs 'login' + users.lastLoginAt on success.
+```
+
+### `logout` (HTTPS DELETE `/api/session`) — revokes refresh tokens, clears cookie, audits sign-out. (Future: moves to `/api/auth/logout` alongside `/api/auth/refresh`, `/api/auth/verify-email`, `/api/auth/forgot-password`, `/api/auth/reset-password`.)
 
 ## 3. Contracts — Staff Surface (callables & server actions; permission per Doc 19)
 

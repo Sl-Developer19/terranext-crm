@@ -24,7 +24,7 @@ Pre-development architecture and hardening documentation, produced before any co
 
 | Doc | Contents |
 |---|---|
-| [ADR-001 … ADR-012](adr/) | Decision records: Firebase, app separation, Firestore lock-in (C-4), feature architecture, shared data layer, custom claims, immutable audit, privileged Functions, soft delete, multi-branch readiness, flat roles, integer paise |
+| [ADR-001 … ADR-013](adr/) | Decision records: Firebase, app separation, Firestore lock-in (C-4), feature architecture, shared data layer, custom claims, immutable audit, privileged Functions, soft delete, multi-branch readiness, flat roles, integer paise, server-side login + lockout (amends Doc 10 §1) |
 | [14 — Data Dictionary](14-data-dictionary.md) | Field-level reference: every collection, type, validation, example, index, security |
 | [15 — Business Rules Matrix](15-business-rules-matrix.md) | BR-01…BR-09 × 10 engineering dimensions each |
 | [16 — Screen Inventory](16-screen-inventory.md) | All ~30 screens: purpose, roles, components, actions, build-order dependencies |

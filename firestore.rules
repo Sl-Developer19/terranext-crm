@@ -14,6 +14,20 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Login-security ledger (Doc 10 §1 / ADR-013): server-only forever.
+    // Written exclusively by the Admin SDK from /api/auth/login; no client
+    // (any role, any claim) may ever read attempt counters, lockout state,
+    // access-log entries, or security events.
+    match /loginSecurity/{emailHash} {
+      allow read, write: if false;
+    }
+    match /loginAttempts/{attemptId} {
+      allow read, write: if false;
+    }
+    match /securityEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     // Deny-all default. Every business collection must add an explicit block
     // above this wildcard in the same PR that introduces the collection
     // (Doc 09 §4 PR checklist). Hard `delete` stays false everywhere (ADR-009).

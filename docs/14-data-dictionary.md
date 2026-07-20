@@ -61,6 +61,23 @@ Names: `participantId`, `certificateNo`, `receiptNo` (receiptNo resets per FY). 
 
 Indexes: (entityType, entityId, at desc), (actorUid, at desc). No envelope soft-delete fields apply (never deletable).
 
+## 4b. Login-Security Ledger (server-only, ADR-013)
+
+Admin-SDK-only; explicit deny-all rules blocks (Doc 18). Timestamps stored as Firestore `Timestamp`, exposed to policy code as epoch ms.
+
+**`loginSecurity/{emailHash}`** — doc ID = `sha256(normalized email)`; no plain addresses in the ledger
+
+| Field | Type | Req | Validation / Notes |
+|---|---|---|---|
+| emailHash | string | R | 64-hex |
+| failedAttempts | number | R | int ≥ 0; decays per A1 (30 min) |
+| lastFailedAt / lockedUntil | ts\|null | R | lock computed from tier table (config/auth-security) |
+| lastSuccessfulLogin / lastLoginIp / lastUserAgent | ts\|null / string\|null | R | success metadata only |
+
+**`loginAttempts/{autoId}`** — the SOP 17.16 System Access Log register: `at`, `email` (plain, register requirement), `emailHash`, `success`, `ip`, `userAgent`, `reason` (`ok|invalid_credentials|locked|disabled|not_provisioned|mfa_required|provider_error`). Append-only.
+
+**`securityEvents/{autoId}`** — high-signal incidents (`LOGIN_LOCKOUT`, …): `at`, `type`, `severity` (`low|medium|high|critical`), `emailHash`, `ip`, `userAgent`, `details`. Append-only, immutable.
+
 ## 5. `academies/{id}`
 
 `name` (R, 2–80), `slug` (R, kebab, unique), `description` (O), `status` (R, `active|archived`). Example: Gen Z Career Readiness Academy.

@@ -7,21 +7,33 @@ Sources: BRD Section 22 NFRs · SOP Ch.17 (classification, incident mgmt, regist
 
 ## 1. Authentication Flow
 
+> **Amended by ADR-013** (approved 2026-07-20): the password stage runs **server-side** so the brute-force lockout policy governs every attempt. The former client-SDK sign-in + `POST /api/session` mint is superseded; `/api/session` retains only DELETE (sign-out).
+
 ```
-Login (email/password) ──▶ Firebase Auth ──▶ ID token (claims: role, branchId)
-      │                                            │
-      │                        POST /api/session ──▶ verify token (Admin SDK)
-      │                                            └─ set __session cookie
-      ▼                                               (HttpOnly, Secure,
-middleware verifies session cookie per request         SameSite=Lax, 5-day expiry,
-└─ invalid/expired → /login                            Firebase session cookie)
+POST /api/auth/login {email, password}          server-side, single endpoint
+  1. guards[] (extension slot: App Check, CAPTCHA, per-IP rate limit)
+  2. isLoginLocked(sha256(email))? ──▶ 429 "Too many failed login attempts.
+  │                                        Try again in X seconds." (+Retry-After)
+  3. Identity Toolkit REST signInWithPassword (server↔Google; key is public config)
+  │     failure ──▶ incrementFailedLogin() ──▶ 401 generic "Invalid email or password."
+  │                  (3 fails→30s · 5→5min · 10→30min + HIGH securityEvent; A1 decay 30min)
+  │     mfa_required ──▶ challenge outcome (flow attaches when MFA ships; no counter change)
+  4. staff profile check (users doc: provisioned + active) — else generic 401
+  5. resetFailedLogin() · loginAttempts entry · auditLogs 'login' · users.lastLoginAt
+  6. mint Firebase session cookie ──▶ Set-Cookie __session (HttpOnly, Secure,
+                                       SameSite=Lax, 5-day expiry)
+middleware verifies session cookie per request └─ invalid/expired → /login
 ```
+
+- **Every attempt** (success, failure, locked, disabled) writes a `loginAttempts` register entry: timestamp, email, outcome, IP (normalized v4/v6), userAgent, reason (SOP 17.16).
+- Responses never distinguish unknown email / wrong password / disabled account — one generic message, one shape (enumeration resistance). Lockout state is keyed by `sha256(normalized email)` and tracked for unknown addresses too.
+- Lockout is server-enforced; any client countdown is cosmetic. Policy numbers live in `config/auth-security.ts` only.
 
 - Staff accounts **admin-provisioned only**; no self-signup path exists in the app or in Auth settings (email/password provider with signup blocked server-side; provisioning via `provisionUser` callable).
 - First login forces password change (`users.mustChangePassword`); password policy via Firebase Auth policy (min 10, mixed).
 - MFA: TOTP enrollment offered to all staff at launch; **enforced** for `system_admin`, `founder`, `finance` (Highly Confidential data access, SOP 17.6).
 - Logout revokes refresh tokens (`revokeRefreshTokens`) + clears cookie. Disable user → status flip + token revocation → locked out within one request (middleware status check).
-- Login success/failure and logout are audited (`action: 'login'`), feeding the System Access Log register (SOP 17.16).
+- Login success/failure and logout are audited (`action: 'login'` on success/logout, plus the per-attempt `loginAttempts` register), feeding the System Access Log register (SOP 17.16).
 
 ## 2. Authorization Flow
 

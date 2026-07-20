@@ -36,6 +36,8 @@ Doc ID = Firebase Auth UID · Writes: Functions only · Related: batches.trainer
 | mustChangePassword | boolean | R | — | `false` |
 | lastLoginAt | ts\|null | O | set by session endpoint | — |
 
+Indexes: (deletedAt, displayName) — directory listing (S50); (role, status, deletedAt) — active-System-Administrator count guard (`features/users/logic.ts` wouldStrandPlatform, Doc 19 setUserRole/setUserStatus).
+
 Future: FCM token subcollection for push (Doc 12 §2).
 
 ## 2. `settings/{key}` — fixed config docs

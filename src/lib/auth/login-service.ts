@@ -32,7 +32,13 @@ export type CredentialVerdict =
   | { status: 'ok'; uid: string; idToken: string }
   | { status: 'invalid_credentials' }
   | { status: 'disabled' }
-  | { status: 'mfa_required' }
+  | {
+      status: 'mfa_required';
+      /** Opaque credential to pass to the MFA finalize endpoint. */
+      mfaPendingCredential: string;
+      /** Enrollment ID of the enrolled TOTP factor. */
+      mfaEnrollmentId: string;
+    }
   | { status: 'provider_error' };
 
 export interface CredentialVerifier {
@@ -82,7 +88,13 @@ export type LoginOutcome =
       uid: string;
       sessionCookie: { value: string; maxAgeMs: number };
     }
-  | { kind: 'mfa_required' }
+  | {
+      kind: 'mfa_required';
+      /** Pass to /api/auth/mfa/challenge along with the TOTP code. */
+      mfaPendingCredential: string;
+      /** Which TOTP enrollment to verify against. */
+      mfaEnrollmentId: string;
+    }
   | { kind: 'rejected'; result: Result<never>; retryAfterSeconds?: number };
 
 export async function performLogin(
@@ -123,9 +135,13 @@ export async function performLogin(
 
   if (verdict.status === 'mfa_required') {
     // Password stage passed but login is not complete: counters neither
-    // reset nor increment. The MFA challenge flow attaches here later.
+    // reset nor increment. The MFA challenge flow attaches here.
     await protection.recordLoginAttempt(attemptCtx, { success: false, reason: 'mfa_required' });
-    return { kind: 'mfa_required' };
+    return {
+      kind: 'mfa_required',
+      mfaPendingCredential: verdict.mfaPendingCredential,
+      mfaEnrollmentId: verdict.mfaEnrollmentId,
+    };
   }
 
   if (verdict.status === 'provider_error') {

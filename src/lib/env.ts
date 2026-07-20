@@ -19,6 +19,12 @@ const clientEnvSchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  /**
+   * Secret for signing short-lived MFA pending JWTs (Doc 10 §1 TOTP flow).
+   * Must be at least 32 characters. Never exposed client-side.
+   * Generate with: openssl rand -base64 32
+   */
+  MFA_TOKEN_SECRET: z.string().min(32, 'MFA_TOKEN_SECRET must be at least 32 characters'),
 });
 
 export type ClientEnv = z.infer<typeof clientEnvSchema>;
@@ -32,6 +38,7 @@ function loadClientEnv(): ClientEnv {
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
     NEXT_PUBLIC_USE_EMULATORS: process.env.NEXT_PUBLIC_USE_EMULATORS,
+    MFA_TOKEN_SECRET: process.env.MFA_TOKEN_SECRET,
   });
 
   if (!parsed.success) {

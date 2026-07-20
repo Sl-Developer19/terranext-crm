@@ -37,6 +37,7 @@ async function getCerts(): Promise<Record<string, string>> {
 export interface EdgeSession {
   uid: string;
   role: string | null;
+  mfaEnrolled?: boolean;
 }
 
 export async function verifySessionCookieOnEdge(
@@ -61,6 +62,7 @@ export async function verifySessionCookieOnEdge(
     return {
       uid: payload.sub,
       role: typeof payload.role === 'string' ? payload.role : null,
+      mfaEnrolled: payload.mfaEnrolled === true,
     };
   } catch {
     return null;

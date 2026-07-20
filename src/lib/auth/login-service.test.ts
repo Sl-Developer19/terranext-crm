@@ -196,7 +196,13 @@ describe('performLogin (Doc 10 §1 / ADR-013)', () => {
   });
 
   it('reports mfa_required without resetting or incrementing counters', async () => {
-    const { deps, store } = harness({ verdict: { status: 'mfa_required' } });
+    const { deps, store } = harness({
+      verdict: {
+        status: 'mfa_required',
+        mfaPendingCredential: 'mock_cred',
+        mfaEnrollmentId: 'mock_enrollment',
+      },
+    });
     await deps.protection.incrementFailedLogin(INPUT);
     const outcome = await performLogin(deps, INPUT);
     expect(outcome.kind).toBe('mfa_required');

@@ -29,10 +29,18 @@ const INVALID_CREDENTIAL_CODES = new Set([
   'MISSING_PASSWORD',
 ]);
 
+interface MfaInfoEntry {
+  mfaEnrollmentId: string;
+  displayName?: string;
+  enrolledAt?: string;
+  totpInfo?: Record<string, unknown>;
+}
+
 interface SignInResponseBody {
   localId?: string;
   idToken?: string;
   mfaPendingCredential?: string;
+  mfaInfo?: MfaInfoEntry[];
   error?: { message?: string };
 }
 
@@ -58,7 +66,13 @@ export class IdentityToolkitVerifier implements CredentialVerifier {
         return { status: 'ok', uid: body.localId, idToken: body.idToken };
       }
       if (body.mfaPendingCredential) {
-        return { status: 'mfa_required' };
+        // Firebase returns one or more enrolled MFA factors. Take the first TOTP factor.
+        const totpFactor = body.mfaInfo?.find((f) => f.totpInfo !== undefined);
+        return {
+          status: 'mfa_required',
+          mfaPendingCredential: body.mfaPendingCredential,
+          mfaEnrollmentId: totpFactor?.mfaEnrollmentId ?? '',
+        };
       }
       return { status: 'provider_error' };
     }

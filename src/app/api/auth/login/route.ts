@@ -4,6 +4,7 @@ import { clientIpFromHeaders } from '@/lib/auth/identity';
 import { loginServiceDeps } from '@/lib/auth/login-runtime';
 import { performLogin } from '@/lib/auth/login-service';
 import { AUTH_MESSAGES } from '@/lib/auth/messages';
+import { signMfaPendingToken } from '@/lib/auth/mfa-token';
 import { SESSION_COOKIE_NAME } from '@/lib/auth/session';
 import { ERROR_HTTP_STATUS } from '@/lib/utils/result';
 import { loginSchema } from '@/features/auth';
@@ -55,12 +56,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
       return response;
     }
-    case 'mfa_required':
-      // Challenge flow attaches here when MFA enrollment ships (Doc 10 §1).
+    case 'mfa_required': {
+      // Issue a short-lived signed token the client uses to POST to /api/auth/mfa/challenge.
+      // The client must include this token + the TOTP code; the route verifies
+      // the token signature before calling the Identity Toolkit finalize endpoint.
+      const mfaToken = await signMfaPendingToken({
+        mfaPendingCredential: outcome.mfaPendingCredential,
+        mfaEnrollmentId: outcome.mfaEnrollmentId,
+      });
       return NextResponse.json(
-        { ok: true, data: { status: 'mfa_required', message: AUTH_MESSAGES.mfaRequired } },
+        {
+          ok: true,
+          data: { status: 'mfa_required', mfaToken, message: AUTH_MESSAGES.mfaRequired },
+        },
         { status: 200 },
       );
+    }
     case 'rejected': {
       const { error } = outcome.result.ok ? { error: null } : outcome.result;
       const response = NextResponse.json(

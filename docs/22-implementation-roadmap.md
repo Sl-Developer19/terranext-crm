@@ -15,6 +15,8 @@ Milestones sequenced by the dependency graph (Doc 01 §5, Doc 16 build-order). C
 
 ## M2 — Acquisition: Leads · Counselling · Colleges · Website Intake *(L)*
 
+> **Progress note (2026-07-21, speed-with-quality pivot):** core lead management (S10 table view, S11 detail/activity/stage/assignment, row-level scope, RBAC, rules, tests) shipped as a vertical slice ahead of counselling/colleges/website-intake. See Doc 16 §S10/S11 for the exact done/not-yet-done split.
+
 **Objectives:** BR-07 live — no enquiry ever lost; the follow-up machine running.
 **Deliverables:** leads list/board/detail (S10–S11), activities, assignment, follow-up queue + digest; counselling module (S12); colleges + campus leaders (S15); minimal catalogue admin (academies/programmes — S22 subset) as picklist dependency; **`createLead` Function + website `/apply` integration** (contract Doc 20 §2, App Check + rate limits); communications log (manual + acknowledgement pipeline, FR-10.3).
 **Dependencies:** M1. Client inputs due: programme catalogue content, consent text (legal), acknowledgement template (RR-14).

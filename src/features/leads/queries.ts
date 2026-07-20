@@ -1,0 +1,121 @@
+import 'server-only';
+
+import { Timestamp } from 'firebase-admin/firestore';
+import type { QueryDocumentSnapshot, DocumentSnapshot } from 'firebase-admin/firestore';
+
+import type { Session } from '@/lib/auth/session';
+import { adminDb } from '@/lib/firebase/admin';
+
+import { isLeadRowScoped } from './logic';
+import type { Lead, LeadActivity } from './schema';
+
+function toIso(value: unknown): string | null {
+  return value instanceof Timestamp ? value.toDate().toISOString() : null;
+}
+
+async function resolveDisplayNames(uids: unknown[]): Promise<Map<string, string>> {
+  const unique = [...new Set(uids.filter((v): v is string => typeof v === 'string'))];
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (uid) => {
+      const snap = await adminDb().collection('users').doc(uid).get();
+      map.set(
+        uid,
+        typeof snap.get('displayName') === 'string'
+          ? (snap.get('displayName') as string)
+          : 'Unknown',
+      );
+    }),
+  );
+  return map;
+}
+
+function toLead(doc: QueryDocumentSnapshot | DocumentSnapshot, names: Map<string, string>): Lead {
+  const data = doc.data() ?? {};
+  const assignedToUid = typeof data.assignedToUid === 'string' ? data.assignedToUid : null;
+  return {
+    id: doc.id,
+    name: typeof data.name === 'string' ? data.name : '',
+    phone: typeof data.phone === 'string' ? data.phone : '',
+    email: typeof data.email === 'string' ? data.email : null,
+    source: data.source,
+    programmeInterest:
+      typeof data.programmeInterestId === 'string' ? data.programmeInterestId : null,
+    stage: data.stage,
+    assignedToUid,
+    assignedToName: assignedToUid ? (names.get(assignedToUid) ?? null) : null,
+    nextFollowUpAt: toIso(data.nextFollowUpAt),
+    lostReason: typeof data.lostReason === 'string' ? data.lostReason : null,
+    participantId: typeof data.participantId === 'string' ? data.participantId : null,
+    consentGiven: data.consent?.given === true,
+    createdAt: toIso(data.createdAt) ?? '',
+    updatedAt: toIso(data.updatedAt) ?? '',
+  };
+}
+
+/**
+ * Directory read for /leads (Doc 16 S10). Row-level scope (Doc 10 §2):
+ * consultants see only leads assigned to them; ops_manager/founder see all.
+ */
+export async function listLeads(session: Session): Promise<Lead[]> {
+  const base = adminDb().collection('leads').where('deletedAt', '==', null);
+  const query =
+    session.role === 'consultant'
+      ? base.where('assignedToUid', '==', session.uid).orderBy('updatedAt', 'desc')
+      : base.orderBy('updatedAt', 'desc');
+
+  const snap = await query.get();
+  const names = await resolveDisplayNames(snap.docs.map((d) => d.get('assignedToUid') as unknown));
+  return snap.docs.map((doc) => toLead(doc, names));
+}
+
+/** Single-lead read for /leads/[leadId] (Doc 16 S11), row-scoped like listLeads. */
+export async function getLead(session: Session, leadId: string): Promise<Lead | null> {
+  const snap = await adminDb().collection('leads').doc(leadId).get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  if (!data || data.deletedAt !== null) return null;
+  const assignedToUid = typeof data.assignedToUid === 'string' ? data.assignedToUid : null;
+  if (isLeadRowScoped(session.role, assignedToUid, session.uid)) return null;
+
+  const names = await resolveDisplayNames([assignedToUid]);
+  return toLead(snap, names);
+}
+
+export async function listLeadActivities(leadId: string): Promise<LeadActivity[]> {
+  const snap = await adminDb()
+    .collection('leads')
+    .doc(leadId)
+    .collection('activities')
+    .orderBy('at', 'desc')
+    .get();
+
+  const names = await resolveDisplayNames(snap.docs.map((d) => d.get('byUid') as unknown));
+  return snap.docs.map((doc) => {
+    const data = doc.data();
+    const byUid = typeof data.byUid === 'string' ? data.byUid : '';
+    return {
+      id: doc.id,
+      type: data.type,
+      summary: typeof data.summary === 'string' ? data.summary : '',
+      at: toIso(data.at) ?? '',
+      byUid,
+      byName: names.get(byUid) ?? 'Unknown',
+    };
+  });
+}
+
+/** Assignable consultants for the assignment dialog (ops_manager/founder only). */
+export async function listConsultants(): Promise<Array<{ uid: string; displayName: string }>> {
+  const snap = await adminDb()
+    .collection('users')
+    .where('role', '==', 'consultant')
+    .where('status', '==', 'active')
+    .where('deletedAt', '==', null)
+    .get();
+  return snap.docs.map((doc) => ({
+    uid: doc.id,
+    displayName:
+      typeof doc.get('displayName') === 'string' ? (doc.get('displayName') as string) : doc.id,
+  }));
+}

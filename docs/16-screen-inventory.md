@@ -16,7 +16,9 @@ Every screen in the CRM. Roles column = roles with any access (scope per Doc 04 
 | # | Screen | Route | Purpose · Key elements | Roles | Actions |
 |---|---|---|---|---|---|
 | S10 | Leads list/board | `/leads` | Pipeline table + stage board toggle; filters: stage, source, assignee, college; dedupe badge | founder, ops, consultant | new walk-in lead (`LeadFormDialog`), assign, export (ops/founder) |
+> ✅ v1 shipped: table view, row-scoped to assigned leads for consultants, staff-entered create with advisory dedupe. **Not yet built:** board/kanban toggle, stage/source/assignee/college filters, export. Fast-follow.
 | S11 | Lead detail | `/leads/[id]` | Profile + `ActivityTimeline` + counselling history + consent record | founder, ops, consultant | log activity, set follow-up, change stage, book counselling, → convert (ops) |
+> ✅ v1 shipped: profile, activity timeline, stage change (auto-logs `stage_change` activity), follow-up date, assignment (ops). **Not yet built:** counselling history tab (S12 doesn't exist yet), consent-record display, → convert action (M3 territory). Fast-follow.
 | S12 | Counselling | `/counselling` | Upcoming/held sessions table; session capture form (`CounsellingSessionForm`: notes, needs, recommendation, outcome) | consultant, ops, founder | record session (BR-02 data) |
 | S13 | Admissions queue | `/admissions` | Leads at `hot`/`counselling_attended` with BR-02 checklist per row | ops, founder | open conversion |
 | S14 | Convert lead | `/admissions/convert/[leadId]` | `Stepper`: verify details → duplicate check (BR-01) → programme/batch (BR-04 capacity shown) → fee plan → confirm (ConfirmDialog: permanent ID warning) | ops | convertLead |

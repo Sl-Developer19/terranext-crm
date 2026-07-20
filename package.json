@@ -17,7 +17,9 @@
     "analyze": "cross-env ANALYZE=true next build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "generate:rules": "tsx scripts/generate-firestore-predicates.mts",
+    "check:rules-drift": "tsx scripts/check-rules-drift.mts"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
@@ -80,6 +82,7 @@
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.6.9",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

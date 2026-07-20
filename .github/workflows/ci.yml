@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Typecheck · Lint · Test · Build
+    name: Typecheck · Lint · Test · Rules · Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +36,14 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+      - name: Rules drift-check (C-1)
+        # Verifies firestore.rules RBAC block is in sync with permissions.ts.
+        # Fails fast if a developer changed permissions.ts without regenerating.
+        run: npm run check:rules-drift
+
       - name: Build
         run: npm run build
 
   # Firestore rules emulator tests join this pipeline when the first
   # client-accessible collection block lands (C-1 gate, Doc 22 M1).
+

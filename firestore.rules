@@ -14,7 +14,24 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Login-security ledger (Doc 10 §1 / ADR-013): server-only forever.
+
+    // ── Shared predicates ────────────────────────────────────────────────────
+    // isStaff(): valid session cookie with a known role claim.
+    // Role predicates used here are literal string checks — the C-1 codegen
+    // will generate the full can(module, action) expansion from permissions.ts.
+    function isStaff() {
+      return request.auth != null && request.auth.token.role != null;
+    }
+
+    function hasRole(r) {
+      return isStaff() && request.auth.token.role == r;
+    }
+
+    function isFounderOrAdmin() {
+      return hasRole('founder') || hasRole('system_admin');
+    }
+
+    // ── Login-security ledger (Doc 10 §1 / ADR-013): server-only forever. ──
     // Written exclusively by the Admin SDK from /api/auth/login; no client
     // (any role, any claim) may ever read attempt counters, lockout state,
     // access-log entries, or security events.
@@ -28,6 +45,46 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── auditLogs (Doc 18, ADR-007: create-only, immutable) ─────────────────
+    // Read: system_admin + founder only (Doc 04 §3, SOP 17.16).
+    // Create: any authenticated staff member may write their own audit entry
+    //   (actorUid == auth.uid, valid shape). Admin SDK bypasses this.
+    // Update/delete: false for everyone, forever (ADR-007 — immutability absolute).
+    match /auditLogs/{logId} {
+      allow read: if isFounderOrAdmin();
+      allow create: if isStaff()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.entityType is string;
+      allow update, delete: if false;
+    }
+
+    // ── settings/* (Doc 18, Doc 03 §1.1) ────────────────────────────────────
+    // Read: all authenticated staff (org info, ID formats, etc. are not sensitive).
+    // Write: Admin SDK only (system_admin caller — enforced in the server action).
+    //   Rules deny client writes; the action uses Admin SDK which bypasses rules.
+    match /settings/{settingKey} {
+      allow read: if isStaff();
+      allow write: if false; // Admin SDK only
+    }
+
+    // ── counters/* ───────────────────────────────────────────────────────────
+    // Transaction-only via Admin SDK. Client has no access.
+    match /counters/{counterId} {
+      allow read, write: if false;
+    }
+
+    // ── users/* (Doc 18) ────────────────────────────────────────────────────
+    // Read: self (any staff), founder + system_admin (all users).
+    // Write: Admin SDK only (provisionUser / setUserRole / setUserStatus).
+    //   Self may update photoUrl via a dedicated server action.
+    match /users/{uid} {
+      allow read: if isStaff() && (
+        request.auth.uid == uid || isFounderOrAdmin()
+      );
+      allow write: if false; // Admin SDK only
+    }
+
     // Deny-all default. Every business collection must add an explicit block
     // above this wildcard in the same PR that introduces the collection
     // (Doc 09 §4 PR checklist). Hard `delete` stays false everywhere (ADR-009).
@@ -36,3 +93,4 @@ service cloud.firestore {
     }
   }
 }
+

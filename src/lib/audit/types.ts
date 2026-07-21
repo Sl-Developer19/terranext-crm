@@ -25,6 +25,10 @@ export type AuditEntityType =
   | 'lead'
   | 'counselling_session'
   | 'participant'
+  // Parent-first acquisition path (families, their parents, and counselling).
+  | 'family'
+  | 'parent'
+  | 'parent_session'
   | 'enrolment'
   | 'academy'
   | 'programme'

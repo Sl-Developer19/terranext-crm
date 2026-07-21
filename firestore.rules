@@ -87,7 +87,7 @@ service cloud.firestore {
 
 // <<GENERATED_RBAC_START>>
     // ── GENERATED RBAC predicates (condition C-1) ──────────────────────────
-    // Source: lib/rbac/permissions.ts · map-version: 21E52FC1
+    // Source: lib/rbac/permissions.ts · map-version: 1030EEBF
     // DO NOT EDIT this block manually — run scripts/generate-firestore-predicates.mts
     // and commit the result. CI will fail if this block has drifted.
     //
@@ -143,6 +143,18 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
     }
     function can_participants_export() {
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_parents_view() {
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator'];
+    }
+    function can_parents_create() {
+      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+    }
+    function can_parents_update() {
+      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+    }
+    function can_parents_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_programmes_view() {
@@ -422,6 +434,26 @@ service cloud.firestore {
       match /payments/{paymentId} {
         allow read: if can_fees_view();
         allow write: if false; // Admin SDK only — append-only ledger
+      }
+    }
+
+    // ── families/* (parent-first path, Doc 03 §8 Q3) ────────────────────────
+    // Read: any role with `parents:view`. Write: Admin SDK only — parent
+    //   conversion mints a `leads` document and rolls the household's
+    //   conversion status up, neither of which a client write could keep
+    //   consistent. Counselling sessions are the evidence a conversion is
+    //   gated on, so they are no more client-writable than the lead itself.
+    match /families/{familyId} {
+      allow read: if can_parents_view();
+      allow write: if false; // Admin SDK only
+
+      match /parents/{parentId} {
+        allow read: if can_parents_view();
+        allow write: if false; // Admin SDK only
+      }
+      match /sessions/{sessionId} {
+        allow read: if can_parents_view();
+        allow write: if false; // Admin SDK only
       }
     }
 

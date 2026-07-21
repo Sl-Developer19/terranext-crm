@@ -222,11 +222,6 @@
       ]
     },
     {
-      "collectionGroup": "scores",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [{ "fieldPath": "participantId", "order": "ASCENDING" }]
-    },
-    {
       "collectionGroup": "certificates",
       "queryScope": "COLLECTION",
       "fields": [
@@ -243,10 +238,51 @@
       ]
     },
     {
-      "collectionGroup": "payments",
+      "collectionGroup": "families",
       "queryScope": "COLLECTION",
-      "fields": [{ "fieldPath": "receivedAt", "order": "DESCENDING" }]
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "familyName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "families",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "source", "order": "ASCENDING" },
+        { "fieldPath": "familyName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "families",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "conversionStatus", "order": "ASCENDING" },
+        { "fieldPath": "familyName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "families",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "searchTokens", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "familyName", "order": "ASCENDING" }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "scores",
+      "fieldPath": "participantId",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
+    },
+    {
+      "collectionGroup": "attendance",
+      "fieldPath": "participantId",
+      "indexes": [{ "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }]
+    }
+  ]
 }

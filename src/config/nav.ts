@@ -70,6 +70,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ClipboardList,
         permission: view('admissions'),
       },
+      {
+        label: 'Parents & Families',
+        href: '/parents',
+        icon: UsersRound,
+        permission: view('parents'),
+      },
       { label: 'Colleges', href: '/colleges', icon: Building2, permission: view('colleges') },
     ],
   },

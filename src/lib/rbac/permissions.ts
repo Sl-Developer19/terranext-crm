@@ -21,6 +21,8 @@ export const MODULES = [
   'counselling',
   'admissions',
   'participants',
+  /** Parent & family records — the parent-first acquisition path. */
+  'parents',
   'programmes',
   'batches',
   'attendance',
@@ -68,6 +70,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('counselling', 'view'),
     ...p('admissions', 'view'),
     ...p('participants', 'view', 'export'),
+    ...p('parents', 'view', 'export'),
     ...p('programmes', 'view'),
     ...p('batches', 'view'),
     ...p('attendance', 'view', 'export'),
@@ -102,6 +105,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('counselling', 'view'),
     ...p('admissions', 'view', 'create'),
     ...p('participants', 'view', 'create', 'update', 'export'),
+    ...p('parents', 'view', 'create', 'update', 'export'),
     ...p('programmes', 'view', 'create', 'update'),
     ...p('batches', 'view', 'create', 'update', 'assign'),
     ...p('attendance', 'view', 'export'),
@@ -121,6 +125,8 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('leads', 'view', 'create', 'update'),
     ...p('counselling', 'view', 'create', 'update'),
     ...p('participants', 'view'),
+    // Consultants run parent counselling — the parent-first path is theirs.
+    ...p('parents', 'view', 'create', 'update'),
     ...p('programmes', 'view'),
     ...p('career', 'view'),
     ...p('alumni', 'view'),
@@ -131,6 +137,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
   coordinator: [
     ...p('dashboard', 'view'),
     ...p('participants', 'view', 'update'),
+    ...p('parents', 'view'),
     ...p('programmes', 'view', 'create', 'update'),
     ...p('batches', 'view', 'create', 'update', 'assign'),
     ...p('attendance', 'view', 'update'),

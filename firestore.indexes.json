@@ -287,6 +287,15 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "name", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "communications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "refType", "order": "ASCENDING" },
+        { "fieldPath": "refId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

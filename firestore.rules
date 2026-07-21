@@ -494,6 +494,19 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── communications/* (Doc 03 §1.7, Doc 14 §19, FR-10.3, S41) ────────────
+    // Read: any role with `communications:view`. Write: Admin SDK only.
+    //   Doc 18 sketched a staff manual-log create (`byUid == uid`), but the
+    //   send path in this build goes through a server action that must write
+    //   the log doc *before* dispatch — a client create path would let a
+    //   message be sent with no log entry, which is the one thing FR-10.3
+    //   exists to prevent. Status transitions (queued→sent/failed) belong to
+    //   the dispatch worker for the same reason.
+    match /communications/{communicationId} {
+      allow read: if can_communications_view();
+      allow write: if false; // Admin SDK only (FR-10.3 log-before-send)
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

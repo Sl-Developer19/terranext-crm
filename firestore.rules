@@ -409,6 +409,22 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only (BR-05)
     }
 
+    // ── feeAccounts/* (Doc 03 §1.7, ADR-012) ────────────────────────────────
+    // Read: any role with `fees:view` (founder, ops_manager, finance).
+    // Write: Admin SDK only. `payments` is an append-only ledger whose
+    //   totals must always reconcile; a client write path would allow an
+    //   edited or deleted payment, which is precisely what the reversing-
+    //   entry design exists to prevent.
+    match /feeAccounts/{feeAccountId} {
+      allow read: if can_fees_view();
+      allow write: if false; // Admin SDK only
+
+      match /payments/{paymentId} {
+        allow read: if can_fees_view();
+        allow write: if false; // Admin SDK only — append-only ledger
+      }
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

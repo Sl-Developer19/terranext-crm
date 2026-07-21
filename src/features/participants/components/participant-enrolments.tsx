@@ -39,6 +39,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+// Deep imports, not the feature barrel: `features/batches/index.ts` also
+// re-exports `server-only` queries, which a client component may not pull
+// into its module graph. `boundaries/entry-point` is off inside features
+// for exactly this case (.eslintrc.json override).
+import { AllocateBatchDialog } from '@/features/batches/components/allocate-batch-dialog';
+import type { Batch } from '@/features/batches/schema';
+
 import { addEnrolment, setEnrolmentStatus } from '../actions/manage-enrolment';
 import {
   ENROLMENT_STATUSES,
@@ -60,11 +67,16 @@ export function ParticipantEnrolments({
   enrolments,
   currentEnrolmentId,
   canUpdate,
+  canAllocate,
+  allocatableBatches,
 }: {
   participantId: string;
   enrolments: Enrolment[];
   currentEnrolmentId: string | null;
   canUpdate: boolean;
+  /** `batches:assign` — allocation is a coordinator/ops action (Doc 04 §3). */
+  canAllocate: boolean;
+  allocatableBatches: Batch[];
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -229,6 +241,7 @@ export function ParticipantEnrolments({
                 <TableHead>Status</TableHead>
                 <TableHead>Attendance</TableHead>
                 <TableHead>Enrolled</TableHead>
+                {canAllocate ? <TableHead className="text-right">Batch</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -275,6 +288,16 @@ export function ParticipantEnrolments({
                   <TableCell className="text-sm text-muted-foreground">
                     {enrolment.enrolledAt ? format(new Date(enrolment.enrolledAt), 'PP') : '—'}
                   </TableCell>
+                  {canAllocate ? (
+                    <TableCell className="text-right">
+                      <AllocateBatchDialog
+                        participantId={participantId}
+                        enrolmentId={enrolment.id}
+                        currentBatchId={enrolment.batchId}
+                        batches={allocatableBatches}
+                      />
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>

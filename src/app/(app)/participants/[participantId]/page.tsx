@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { PageHeader } from '@/components/layout/page-header';
+import { listAllocatableBatches } from '@/features/batches';
 import {
   ParticipantProfile,
   getParticipant,
@@ -26,10 +27,12 @@ export default async function ParticipantDetailPage({
   const participant = await getParticipant(decodeURIComponent(participantId));
   if (!participant) notFound();
 
-  const [enrolments, documents, timeline] = await Promise.all([
+  const canAllocate = can(session.role, 'batches:assign');
+  const [enrolments, documents, timeline, allocatableBatches] = await Promise.all([
     listEnrolments(participant.id),
     listDocuments(participant.id),
     listTimeline(participant.id),
+    canAllocate ? listAllocatableBatches() : Promise.resolve([]),
   ]);
 
   return (
@@ -44,6 +47,8 @@ export default async function ParticipantDetailPage({
         documents={documents}
         timeline={timeline}
         canUpdate={can(session.role, 'participants:update')}
+        canAllocate={canAllocate}
+        allocatableBatches={allocatableBatches}
       />
     </div>
   );

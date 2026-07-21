@@ -350,6 +350,23 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── batches/* (Doc 03 §1.2/§1.5, Doc 14 §7, BR-04) ──────────────────────
+    // Read: any role with `batches:view`. Trainers see all batches here and
+    //   are scoped to their own only for attendance WRITES (Doc 18) — seeing
+    //   the schedule is not the sensitive operation.
+    // Write: Admin SDK only. `enrolledCount` is the BR-04 capacity counter and
+    //   may only move inside the allocation transaction; a client-writable
+    //   counter is exactly how overbooking happens.
+    match /batches/{batchId} {
+      allow read: if can_batches_view();
+      allow write: if false; // Admin SDK only
+
+      match /sessions/{sessionId} {
+        allow read: if can_batches_view();
+        allow write: if false; // Admin SDK only
+      }
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

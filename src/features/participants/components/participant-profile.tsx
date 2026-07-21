@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import type { Batch } from '@/features/batches/schema';
+
 import { setParticipantStatus } from '../actions/set-participant-status';
 import { isManuallyAssignableStatus, requiresStatusReason } from '../logic';
 import {
@@ -45,12 +47,16 @@ export function ParticipantProfile({
   documents,
   timeline,
   canUpdate,
+  canAllocate,
+  allocatableBatches,
 }: {
   participant: Participant;
   enrolments: Enrolment[];
   documents: ParticipantDocument[];
   timeline: TimelineEntry[];
   canUpdate: boolean;
+  canAllocate: boolean;
+  allocatableBatches: Batch[];
 }) {
   const router = useRouter();
   const [target, setTarget] = React.useState<ParticipantStatus | null>(null);
@@ -133,6 +139,8 @@ export function ParticipantProfile({
             enrolments={enrolments}
             currentEnrolmentId={participant.currentEnrolmentId}
             canUpdate={canUpdate}
+            canAllocate={canAllocate}
+            allocatableBatches={allocatableBatches}
           />
         </TabsContent>
         <TabsContent value="documents">

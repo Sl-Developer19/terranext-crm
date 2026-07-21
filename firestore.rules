@@ -364,6 +364,17 @@ service cloud.firestore {
       match /sessions/{sessionId} {
         allow read: if can_batches_view();
         allow write: if false; // Admin SDK only
+
+        // Attendance marks. Doc 10 §3 anticipated trainer-scoped CLIENT
+        // writes validated here; the implementation runs them through a
+        // server action instead, because the attendancePct roll-up recompute
+        // is server-side regardless and splitting the write across two trust
+        // tiers would duplicate the trainer↔batch rule. Default-deny here is
+        // strictly more restrictive than the blueprint proposed.
+        match /attendance/{participantId} {
+          allow read: if can_attendance_view();
+          allow write: if false; // Admin SDK only (markAttendance action)
+        }
       }
     }
 

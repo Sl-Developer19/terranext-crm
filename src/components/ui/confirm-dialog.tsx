@@ -25,6 +25,7 @@ export function ConfirmDialog({
   variant = 'primary',
   pending = false,
   onConfirm,
+  children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,6 +35,8 @@ export function ConfirmDialog({
   variant?: 'primary' | 'destructive';
   pending?: boolean;
   onConfirm: () => void;
+  /** Optional field(s) the confirmation itself requires — e.g. a mandatory reason. */
+  children?: React.ReactNode;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -42,6 +45,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{consequence}</DialogDescription>
         </DialogHeader>
+        {children}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel

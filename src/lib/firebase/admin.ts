@@ -3,6 +3,7 @@ import 'server-only';
 import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { readFileSync } from 'node:fs';
 
 import { env } from '@/lib/env';
@@ -23,14 +24,15 @@ function adminApp(): App {
   if (existing.length > 0 && existing[0]) return existing[0];
 
   const projectId = env().NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const storageBucket = env().NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
   if (keyPath) {
     const serviceAccount = JSON.parse(readFileSync(keyPath, 'utf8')) as Record<string, string>;
-    return initializeApp({ credential: cert(serviceAccount), projectId });
+    return initializeApp({ credential: cert(serviceAccount), projectId, storageBucket });
   }
   // Deployed environments: ADC via the runtime service account
-  return initializeApp({ projectId });
+  return initializeApp({ projectId, storageBucket });
 }
 
 export function adminAuth(): Auth {
@@ -39,4 +41,16 @@ export function adminAuth(): Auth {
 
 export function adminDb(): Firestore {
   return getFirestore(adminApp());
+}
+
+/**
+ * Default Storage bucket for the signed-URL upload/download flow (Doc 10 §6).
+ *
+ * `getSignedUrl` signs with the service-account private key locally. On
+ * App Hosting (ADC, no local key) the runtime service account additionally
+ * needs `roles/iam.serviceAccountTokenCreator` on itself so it can call
+ * `signBlob` — a one-time IAM grant, documented in Doc 10 §6.
+ */
+export function adminBucket() {
+  return getStorage(adminApp()).bucket();
 }

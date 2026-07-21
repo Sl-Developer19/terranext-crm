@@ -102,6 +102,19 @@ Secrets: no service-account keys in the repo; Functions use ADC; client env vars
 
 No direct client SDK uploads to arbitrary paths; the metadata doc is the authorization anchor.
 
+**As built (Participant Management, 2026-07-21).** Steps 1–5 are implemented as server actions in `features/participants/actions/manage-documents.ts`:
+
+| Step | Implementation |
+|---|---|
+| ticket | `requestUploadTicket` — permission check → server-generated `documentId` → `pending` metadata doc → v4 signed PUT URL (15 min) bound to one path **and** content type |
+| upload | client `PUT`s to the signed URL with exactly the signed `Content-Type` (the signature covers the header) |
+| verify | `confirmDocumentUpload` — object existence + size + contentType must match the metadata doc, else the object is deleted and the record marked `rejected`. This is the server-action equivalent of Doc 19's `onUploadFinalize` trigger; the trigger can replace it later without changing the client contract |
+| download | `issueDocumentDownloadUrl` — 15-min signed GET, **audited as `export`** (RR-09 insider-exfiltration control) |
+
+`storage.rules` stays fully default-deny: signed URLs are authorized by their signature, not by rules, so there is no SDK path to an arbitrary object.
+
+> **Deployment prerequisite.** `getSignedUrl` signs with the service-account private key locally. On App Hosting (ADC, no local key file) the runtime service account needs `roles/iam.serviceAccountTokenCreator` **on itself** so it can call `signBlob`; without that grant, uploads and downloads fail at signing time. One-time IAM grant, alongside the Doc 19 §4a export-bucket setup.
+
 ## 7. Audit Flow
 
 - What: every create/update/soft-delete/status/permission change on business data; logins; exports; overrides (schema in Doc 03 §6).

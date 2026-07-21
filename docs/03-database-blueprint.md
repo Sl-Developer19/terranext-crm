@@ -93,11 +93,15 @@ Subcollection **`leads/{id}/activities/{id}`** — `{ type: 'call'|'note'|'stage
   personal: { fullName, dob, gender, phone, email, address,
               emergencyContact: { name, phone, relation } },
   family:   { parentName?, parentPhone?, familyRecordId? },   // parent-first path
-  status: 'active'|'completed'|'alumni'|'withdrawn',
+  status: 'enrolled'|'active'|'completed'|'dropped'|'alumni',
   currentEnrolmentId: string|null,
+  currentAcademyId: string|null,         // denormalized from current enrolment
+  currentBatchId: string|null,           //   (directory filters, no CG join)
   tags: string[],
   searchTokens: string[] }               // lowercase name/phone prefixes for search
 ```
+
+> **Status set amended (2026-07-21, Participant Management).** Originally `active|completed|alumni|withdrawn`. Two deliberate deltas: `enrolled` added as the pre-start state (a participant exists from conversion, but their first batch may not have begun), and `withdrawn` renamed `dropped` so the participant vocabulary matches the `enrolments` subcollection, which already used `dropped`. `alumni` is unchanged and remains **trigger-only** — `setParticipantStatus` rejects it, because BR-05 grants it on certification and a dropdown that could set it would mint alumni with no certificate behind them. "Lead" is deliberately **not** a participant status: pre-conversion enquiries live in `leads` and are linked by the immutable `leadId`.
 
 Subcollections (the lifecycle stays **under the participant** — one record, many chapters):
 

@@ -336,6 +336,32 @@ service cloud.firestore {
       }
     }
 
+    // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
+    // Read: every role with `participants:view` — the directory is shared
+    //   across the whole staff. Field-level scoping (finance sees fee fields,
+    //   placement sees career fields) is applied by server-side projection
+    //   (Doc 10 §2), not by rules, since rules cannot filter fields on read.
+    // Write: Admin SDK only. Participant IDs come from a transactional
+    //   counter and every mutation is audited — allowing client writes would
+    //   put BR-01 uniqueness and BR-06 audit coverage on the honour system.
+    match /participants/{participantId} {
+      allow read: if can_participants_view();
+      allow write: if false; // Admin SDK only
+
+      match /enrolments/{enrolmentId} {
+        allow read: if can_participants_view();
+        allow write: if false; // Admin SDK only
+      }
+      match /timeline/{entryId} {
+        allow read: if can_participants_view();
+        allow write: if false; // Admin SDK only — append-only via server actions
+      }
+      match /documents/{documentId} {
+        allow read: if can_participants_view();
+        allow write: if false; // Admin SDK only (signed-URL flow, Doc 10 §6)
+      }
+    }
+
     // Deny-all default. Every business collection must add an explicit block
     // above this wildcard in the same PR that introduces the collection
     // (Doc 09 §4 PR checklist). Hard `delete` stays false everywhere (ADR-009).

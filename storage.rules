@@ -1,8 +1,18 @@
 rules_version = '2';
 
 // TerraNext Business OS — Storage Rules (strategy: Doc 10 §4)
-// M1 baseline: default deny. Uploads flow through the signed-URL ticket flow
-// (Doc 10 §6) — direct client SDK writes to arbitrary paths are never enabled.
+//
+// Default deny stays absolute for the Firebase Storage SDK. Participant
+// documents are written and read exclusively through v4 signed URLs issued
+// by server actions after a permission check (Doc 10 §6):
+//
+//   requestUploadTicket  → signed PUT URL bound to one path + content type
+//   confirmDocumentUpload → verifies the object matches its metadata doc
+//   issueDocumentDownloadUrl → 15-min signed GET, audited as an `export`
+//
+// Signed URLs are authorized by their signature, not by these rules, so the
+// flow works with the SDK surface fully closed — which is the point: there
+// is no path for a client to write to an arbitrary object.
 service firebase.storage {
   match /b/{bucket}/o {
     match /{allPaths=**} {

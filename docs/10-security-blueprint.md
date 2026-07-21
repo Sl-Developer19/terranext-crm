@@ -17,7 +17,7 @@ POST /api/auth/login {email, password}          server-side, single endpoint
   3. Identity Toolkit REST signInWithPassword (server↔Google; key is public config)
   │     failure ──▶ incrementFailedLogin() ──▶ 401 generic "Invalid email or password."
   │                  (3 fails→30s · 5→5min · 10→30min + HIGH securityEvent; A1 decay 30min)
-  │     mfa_required ──▶ challenge outcome (flow attaches when MFA ships; no counter change)
+  │     (mfa_required remains a typed verdict; no challenge flow is wired — MFA withdrawn)
   4. staff profile check (users doc: provisioned + active) — else generic 401
   5. resetFailedLogin() · loginAttempts entry · auditLogs 'login' · users.lastLoginAt
   6. mint Firebase session cookie ──▶ Set-Cookie __session (HttpOnly, Secure,
@@ -31,16 +31,16 @@ middleware verifies session cookie per request └─ invalid/expired → /login
 
 - Staff accounts **admin-provisioned only**; no self-signup path exists in the app or in Auth settings (email/password provider with signup blocked server-side; provisioning via `provisionUser` callable).
 - First login forces password change (`users.mustChangePassword`); password policy via Firebase Auth policy (min 10, mixed).
-- MFA: TOTP enrollment offered to all staff at launch; **enforced** for `system_admin`, `founder`, `finance` (Highly Confidential data access, SOP 17.6).
+- **MFA: removed from scope (2026-07-21).** TOTP enrollment and challenge were implemented and then withdrawn by owner decision. The `CredentialVerifier` seam and the `mfa_required` verdict shape remain in `login-service.ts`'s type surface, so re-introducing a challenge flow is an additive change rather than a redesign. Until then, the compensating controls for high-privilege accounts are: server-side brute-force lockout (above), idle-timeout re-auth (§1a), per-attempt access logging, and token revocation on disable.
 - Logout revokes refresh tokens (`revokeRefreshTokens`) + clears cookie. Disable user → status flip + token revocation → locked out within one request (middleware status check).
 - Login success/failure and logout are audited (`action: 'login'` on success/logout, plus the per-attempt `loginAttempts` register), feeding the System Access Log register (SOP 17.16).
 
 ### 1a. Idle-Timeout Re-Auth (M1-B)
 
-- Applies only to the MFA-enforced roles (`system_admin`, `founder`, `finance` — `config/auth-security.ts` `MFA_REQUIRED_ROLES`, one shared definition of "high-privilege" for both MFA and idle enforcement).
+- Applies only to the high-privilege roles (`system_admin`, `founder`, `finance` — `config/idle-security.ts` `lockRoles`). With MFA withdrawn, this is now the primary session-level control for those accounts, not a secondary one.
 - Client tracks activity (`mousemove`/`keydown`/`scroll`/`click`/`touchstart`) via a Zustand store (`stores/idle-store.ts`); 15 minutes idle with no activity triggers a full-screen lock modal, with a 60-second warning toast beforehand (`config/idle-security.ts`).
 - The lock is **client-side UI state only** — the `__session` cookie and its 5-day expiry are untouched. `POST /api/auth/reauth` re-verifies the password against Identity Toolkit for the *current session's own account* (never a client-submitted email/uid), reusing the same brute-force lockout tiers as `/api/auth/login` (§1) — the lock screen cannot be brute-forced on a separate counter.
-- MFA is not re-challenged on every idle cycle (approved scope) — password-only re-auth, consistent with treating idle-lock as a presence check rather than a fresh sign-in.
+- Password-only re-auth, consistent with treating idle-lock as a presence check rather than a fresh sign-in.
 - Success is audited (`action: 'login'`, `context.reason: 'idle_reauth'`); failures follow the same generic, enumeration-resistant message as login.
 
 ## 2. Authorization Flow
@@ -78,7 +78,7 @@ Bucket layout: `participants/{participantId}/{docId}` · `users/{uid}/avatar` ·
 
 | Threat | Vector | Mitigation |
 |---|---|---|
-| Spoofing | stolen staff credentials | MFA (enforced for high-privilege), token revocation on disable, login audit + anomaly review |
+| Spoofing | stolen staff credentials | **Residual risk — MFA withdrawn (§1).** Mitigated by brute-force lockout, idle-timeout re-auth on high-privilege roles, token revocation on disable, and login audit + anomaly review. Credential theft outside the login form (phishing, reuse) is not currently mitigated by a second factor. |
 | Tampering | client altering business fields (fees=0? attendance %, capacity) | Admin-SDK-only privileged writes; rules field validation; server recomputation of roll-ups |
 | Repudiation | "I didn't change that record" | BR-06 immutable audit with actor + diff; batch-coupled audit writes |
 | Info disclosure | over-broad reads (trainer reading finance), public lead form scraping data | role-shaped projections, rules read predicates, website has zero Firestore access |

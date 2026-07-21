@@ -46,13 +46,7 @@ export interface LoginSecurityState {
 }
 
 export type LoginAttemptReason =
-  | 'ok'
-  | 'invalid_credentials'
-  | 'locked'
-  | 'disabled'
-  | 'not_provisioned'
-  | 'mfa_required'
-  | 'provider_error';
+  'ok' | 'invalid_credentials' | 'locked' | 'disabled' | 'not_provisioned' | 'provider_error';
 
 /** `loginAttempts/{autoId}` — the SOP 17.16 System Access Log register entry. */
 export interface LoginAttempt {
@@ -69,7 +63,7 @@ export type SecurityEventSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 /** Extensible catalogue (approved amendment 7) — add members, never repurpose. */
 export type SecurityEventType =
-  'LOGIN_LOCKOUT' | 'ACCOUNT_DISABLED' | 'SESSION_REVOKED' | 'PASSWORD_RESET' | 'MFA_FAILURE';
+  'LOGIN_LOCKOUT' | 'ACCOUNT_DISABLED' | 'SESSION_REVOKED' | 'PASSWORD_RESET';
 
 /** `securityEvents/{autoId}` — server-only, immutable. */
 export interface SecurityEvent {

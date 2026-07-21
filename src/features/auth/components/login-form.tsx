@@ -10,15 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 import { loginSchema, type LoginInput } from '../schema';
-import { MfaChallengeForm } from './mfa-challenge-form';
 
 /**
  * Sign-in via POST /api/auth/login — the server verifies the password,
  * enforces the brute-force lockout, and sets the session cookie itself
  * (Doc 10 §1 as amended by ADR-013). No client-side Firebase sign-in.
- *
- * On mfa_required, transitions inline to MfaChallengeForm with the mfaToken
- * returned by the login route (Doc 10 §1 TOTP challenge flow).
  *
  * The lockout countdown below is purely cosmetic UX; the server re-checks
  * the lock on every attempt regardless.
@@ -28,7 +24,7 @@ const GENERIC_ERROR = 'Sign-in failed. Please try again.';
 
 interface LoginResponseBody {
   ok?: boolean;
-  data?: { status?: string; message?: string; mfaToken?: string };
+  data?: { status?: string; message?: string };
   error?: { message?: string };
 }
 
@@ -37,7 +33,6 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [formError, setFormError] = React.useState<string | null>(null);
   const [retryAfter, setRetryAfter] = React.useState<number>(0);
-  const [mfaToken, setMfaToken] = React.useState<string | null>(null);
 
   // Cosmetic countdown while locked (server-enforced regardless).
   React.useEffect(() => {
@@ -64,18 +59,6 @@ export function LoginForm() {
       const body = (await response.json().catch(() => null)) as LoginResponseBody | null;
 
       if (response.ok && body?.ok) {
-        if (body.data?.status === 'mfa_required') {
-          // Transition to TOTP challenge; the mfaToken carries the pending credential
-          if (body.data.mfaToken) {
-            setMfaToken(body.data.mfaToken);
-          } else {
-            setFormError(
-              body.data.message ??
-                'MFA is required but the server did not return a challenge token.',
-            );
-          }
-          return;
-        }
         const next = searchParams.get('next');
         router.replace(next && next.startsWith('/') ? next : '/dashboard');
         router.refresh();
@@ -94,32 +77,9 @@ export function LoginForm() {
     }
   };
 
-  function handleMfaSuccess() {
-    const next = searchParams.get('next');
-    router.replace(next && next.startsWith('/') ? next : '/dashboard');
-    router.refresh();
-  }
-
-  function handleMfaCancel() {
-    setMfaToken(null);
-    setFormError(null);
-  }
-
   const { errors, isSubmitting } = form.formState;
   const lockedOut = retryAfter > 0;
 
-  // MFA challenge phase
-  if (mfaToken) {
-    return (
-      <MfaChallengeForm
-        mfaToken={mfaToken}
-        onSuccess={handleMfaSuccess}
-        onCancel={handleMfaCancel}
-      />
-    );
-  }
-
-  // Password phase
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-4">
       <div className="space-y-2">

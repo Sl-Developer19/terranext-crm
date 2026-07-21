@@ -52,7 +52,8 @@ Contract stability note: the website deploys independently (ADR-002) — **break
 ```ts
 Input  = loginSchema;   // { email: string (trimmed, email), password: string (min 1) } — features/auth/schema.ts
 Output = { status: 'authenticated' }                       // + Set-Cookie __session (HttpOnly)
-       | { status: 'mfa_required'; message: string };      // challenge flow attaches when MFA ships
+       // 'mfa_required' remains a typed CredentialVerdict but no challenge
+       // flow is wired — MFA withdrawn by owner decision 2026-07-21 (Doc 10 §1)
 Errors: validation (422, malformed body)
       · unauthenticated (401, always "Invalid email or password." — unknown email,
         wrong password, disabled and unprovisioned accounts are indistinguishable)

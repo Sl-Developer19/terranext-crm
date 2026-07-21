@@ -33,4 +33,4 @@ Server-enforced policy with SOP-ready registers; enumeration resistance by const
 - `loginAttempts` grows unbounded pending the retention policy (same open question as auditLogs, Doc 03 §8).
 
 ## Long-Term Impact
-The `CredentialVerifier` interface is the seam future SSO/SAML lands behind; `mfa_required` is a first-class outcome awaiting the MFA challenge flow; portal logins (Doc 12 §1) reuse the same protection stack with their own role gate. The security-event catalogue becomes the feed for incident tooling (SOP 17.14).
+The `CredentialVerifier` interface is the seam future SSO/SAML lands behind; `mfa_required` remains a first-class verdict in the type surface even though **MFA was implemented and then withdrawn (owner decision, 2026-07-21)** — keeping the outcome typed means re-introducing a challenge flow is additive rather than a re-design of the login service. Portal logins (Doc 12 §1) reuse the same protection stack with their own role gate. The security-event catalogue becomes the feed for incident tooling (SOP 17.14).

@@ -83,19 +83,7 @@ describe('performReauth (Doc 10 §1 addendum, M1-B)', () => {
     }
   });
 
-  it('does not unlock on mfa_required or provider_error verdicts (password-only by design)', async () => {
-    const mfa = await performReauth(
-      harness({
-        verdict: {
-          status: 'mfa_required',
-          mfaPendingCredential: 'cred',
-          mfaEnrollmentId: 'enrollment',
-        },
-      }).deps,
-      INPUT,
-    );
-    expect(mfa.kind).toBe('rejected');
-
+  it('does not unlock on provider_error verdicts', async () => {
     const providerError = await performReauth(
       harness({ verdict: { status: 'provider_error' } }).deps,
       INPUT,

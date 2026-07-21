@@ -72,20 +72,16 @@ export async function performReauth(
     return { kind: 'rejected', result: unauthenticatedError(AUTH_MESSAGES.invalidCredentials) };
   }
 
-  if (verdict.status === 'mfa_required' || verdict.status === 'provider_error') {
-    // Re-auth is password-only by design (approved scope, M1-B): MFA is not
-    // re-challenged on every idle cycle. A provider error is retried by the
-    // user the same way a login provider error is.
+  if (verdict.status === 'provider_error') {
+    // A provider error is retried by the user the same way a login provider
+    // error is.
     await protection.recordLoginAttempt(attemptCtx, {
       success: false,
-      reason: verdict.status === 'mfa_required' ? 'mfa_required' : 'provider_error',
+      reason: 'provider_error',
     });
     return {
       kind: 'rejected',
-      result:
-        verdict.status === 'mfa_required'
-          ? unauthenticatedError(AUTH_MESSAGES.invalidCredentials)
-          : unavailableError(AUTH_MESSAGES.serviceUnavailable),
+      result: unavailableError(AUTH_MESSAGES.serviceUnavailable),
     };
   }
 

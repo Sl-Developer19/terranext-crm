@@ -1,11 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import { MFA_REQUIRED_ROLES } from '@/config/auth-security';
 import { verifySessionCookieOnEdge } from '@/lib/auth/edge-session';
 import { env } from '@/lib/env';
 
 const SESSION_COOKIE_NAME = '__session';
-const PUBLIC_PATHS = ['/login', '/mfa-enroll'];
+const PUBLIC_PATHS = ['/login'];
 
 /**
  * Route protection, layer 1 (Doc 05 §4): every application route requires a
@@ -22,12 +21,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     ? await verifySessionCookieOnEdge(sessionCookie, env().NEXT_PUBLIC_FIREBASE_PROJECT_ID)
     : null;
 
-  // Signed-in users don't see the login screen (unless enrolling MFA)
+  // Signed-in users don't see the login screen
   if (isPublic) {
     if (session) {
-      if (pathname === '/mfa-enroll') {
-        return NextResponse.next();
-      }
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     return NextResponse.next();
@@ -40,16 +36,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     // Clear a present-but-invalid cookie so the browser doesn't loop
     if (sessionCookie) response.cookies.delete(SESSION_COOKIE_NAME);
     return response;
-  }
-
-  // MFA enforcement check (Doc 10 §1): high-privilege roles without mfaEnrolled claim must enroll first.
-  if (
-    session.role &&
-    (MFA_REQUIRED_ROLES as readonly string[]).includes(session.role) &&
-    !session.mfaEnrolled &&
-    pathname !== '/mfa-enroll'
-  ) {
-    return NextResponse.redirect(new URL('/mfa-enroll', request.url));
   }
 
   return NextResponse.next();

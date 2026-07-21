@@ -7,7 +7,7 @@ Every screen in the CRM. Roles column = roles with any access (scope per Doc 04 
 
 | # | Screen | Route | Purpose · Key elements | Roles | Actions |
 |---|---|---|---|---|---|
-| S01 | Login | `/login` | Email/password via `POST /api/auth/login` (ADR-013); `LoginForm`; generic-failure + lockout-countdown (cosmetic; server-enforced) states; MFA challenge later | public | sign in |
+| S01 | Login | `/login` | Email/password via `POST /api/auth/login` (ADR-013); `LoginForm`; generic-failure + lockout-countdown (cosmetic; server-enforced) states | public | sign in |
 | S02 | 403 No Access | (inline) | Permission denial explanation, request-access mailto | all | — |
 | S03 | Dashboard | `/dashboard` | Role-scoped widget grid (`StatCard`, `ChartCard`, feature widgets); founder = SOP 18.10 KPIs; ops = follow-ups/admissions/pending fees; trainer = today's sessions | all (scoped) | navigate to modules |
 

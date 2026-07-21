@@ -195,21 +195,6 @@ describe('performLogin (Doc 10 §1 / ADR-013)', () => {
     expect(store.attempts.at(-1)).toMatchObject({ success: false, reason: 'disabled' });
   });
 
-  it('reports mfa_required without resetting or incrementing counters', async () => {
-    const { deps, store } = harness({
-      verdict: {
-        status: 'mfa_required',
-        mfaPendingCredential: 'mock_cred',
-        mfaEnrollmentId: 'mock_enrollment',
-      },
-    });
-    await deps.protection.incrementFailedLogin(INPUT);
-    const outcome = await performLogin(deps, INPUT);
-    expect(outcome.kind).toBe('mfa_required');
-    expect([...store.states.values()][0]?.failedAttempts).toBe(1);
-    expect(store.attempts.at(-1)).toMatchObject({ success: false, reason: 'mfa_required' });
-  });
-
   it('maps provider errors to a retryable unavailable result without counting a failure', async () => {
     const { deps, store } = harness({ verdict: { status: 'provider_error' } });
     const outcome = await performLogin(deps, INPUT);

@@ -15,7 +15,6 @@ import type { StaffRole } from '@/types/common';
  * interface so the flow is unit-testable and extensible without refactoring:
  * - guards[]        → CAPTCHA, App Check, per-IP rate limiting slot in here
  * - CredentialVerifier → password today; SSO verifiers implement the same contract
- * - 'mfa_required' outcome → the MFA challenge flow attaches when MFA lands
  */
 
 export interface LoginInput {
@@ -32,13 +31,6 @@ export type CredentialVerdict =
   | { status: 'ok'; uid: string; idToken: string }
   | { status: 'invalid_credentials' }
   | { status: 'disabled' }
-  | {
-      status: 'mfa_required';
-      /** Opaque credential to pass to the MFA finalize endpoint. */
-      mfaPendingCredential: string;
-      /** Enrollment ID of the enrolled TOTP factor. */
-      mfaEnrollmentId: string;
-    }
   | { status: 'provider_error' };
 
 export interface CredentialVerifier {
@@ -88,13 +80,6 @@ export type LoginOutcome =
       uid: string;
       sessionCookie: { value: string; maxAgeMs: number };
     }
-  | {
-      kind: 'mfa_required';
-      /** Pass to /api/auth/mfa/challenge along with the TOTP code. */
-      mfaPendingCredential: string;
-      /** Which TOTP enrollment to verify against. */
-      mfaEnrollmentId: string;
-    }
   | { kind: 'rejected'; result: Result<never>; retryAfterSeconds?: number };
 
 export async function performLogin(
@@ -131,17 +116,6 @@ export async function performLogin(
       reason: verdict.status === 'disabled' ? 'disabled' : 'invalid_credentials',
     });
     return { kind: 'rejected', result: unauthenticatedError(AUTH_MESSAGES.invalidCredentials) };
-  }
-
-  if (verdict.status === 'mfa_required') {
-    // Password stage passed but login is not complete: counters neither
-    // reset nor increment. The MFA challenge flow attaches here.
-    await protection.recordLoginAttempt(attemptCtx, { success: false, reason: 'mfa_required' });
-    return {
-      kind: 'mfa_required',
-      mfaPendingCredential: verdict.mfaPendingCredential,
-      mfaEnrollmentId: verdict.mfaEnrollmentId,
-    };
   }
 
   if (verdict.status === 'provider_error') {

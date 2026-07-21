@@ -336,6 +336,20 @@ service cloud.firestore {
       }
     }
 
+    // ── academies/* + programmes/* (Doc 03 §1.2, S22 catalogue) ─────────────
+    // Read: any role with `programmes:view` — the catalogue is picklist data
+    //   the whole app depends on. Write: Admin SDK only, so the BR-03
+    //   certificate thresholds and default fee plans cannot be edited except
+    //   through an audited server action.
+    match /academies/{academyId} {
+      allow read: if can_programmes_view();
+      allow write: if false; // Admin SDK only
+    }
+    match /programmes/{programmeId} {
+      allow read: if can_programmes_view();
+      allow write: if false; // Admin SDK only
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

@@ -481,6 +481,16 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── placements/* (Doc 03 §1.6, Doc 14 §16, BR-08, BR-09) ────────────────
+    // Read: any role with `placements:view`. Write: Admin SDK only — creation
+    //   must check the linked career profile is `eligible` (BR-09) and every
+    //   stage advance must append an audited statusHistory entry, neither of
+    //   which rules can safely enforce on their own.
+    match /placements/{placementId} {
+      allow read: if can_placements_view();
+      allow write: if false; // Admin SDK only
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

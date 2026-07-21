@@ -87,7 +87,7 @@ service cloud.firestore {
 
 // <<GENERATED_RBAC_START>>
     // ── GENERATED RBAC predicates (condition C-1) ──────────────────────────
-    // Source: lib/rbac/permissions.ts · map-version: 1030EEBF
+    // Source: lib/rbac/permissions.ts · map-version: 7AAA5EEC
     // DO NOT EDIT this block manually — run scripts/generate-firestore-predicates.mts
     // and commit the result. CI will fail if this block has drifted.
     //
@@ -245,16 +245,19 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['placement'];
     }
     function can_alumni_view() {
-      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'consultant', 'coordinator', 'placement'];
     }
     function can_alumni_create() {
       return isStaff() && request.auth.token.role in ['ops_manager'];
     }
     function can_alumni_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_alumni_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_alumni_configure() {
+      return isStaff() && request.auth.token.role in ['system_admin'];
     }
     function can_fees_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'finance'];

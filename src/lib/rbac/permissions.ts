@@ -79,7 +79,9 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('career', 'view'),
     ...p('placements', 'view', 'export'),
     ...p('employers', 'view'),
-    ...p('alumni', 'view', 'export'),
+    // Founder can also record engagement and toggle success-story consent
+    // (S33) — the same 'update' grant ops_manager holds for this module.
+    ...p('alumni', 'view', 'update', 'export'),
     ...p('fees', 'view', 'export', 'approve'),
     ...p('communications', 'view'),
     ...p('reports', 'view', 'export'),
@@ -94,6 +96,11 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('programmes', 'configure'),
     ...p('certificates', 'configure'),
     ...p('communications', 'configure'),
+    // The manual-alumni-grant override (BR-05) is system_admin only — kept
+    // on 'configure', the verb this role already uses for every other
+    // admin-only override, so it can never be confused with ops_manager's
+    // routine 'alumni:create/update' (engagement recording).
+    ...p('alumni', 'view', 'configure'),
     ...p('users', 'view', 'create', 'update'),
     ...p('roles', 'view', 'configure'),
     ...p('audit', 'view', 'export'),

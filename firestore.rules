@@ -393,6 +393,22 @@ service cloud.firestore {
       }
     }
 
+    // ── certificates/* + alumniRecords/* (Doc 03 §1.5/§1.6, BR-03/BR-05) ────
+    // Read: any role with the matching view grant. Write: Admin SDK only —
+    //   the BR-03 evidence snapshot and the issuance counter are the entire
+    //   integrity story for certificates, and neither survives a client
+    //   write path. Public verification goes through the unauthenticated
+    //   /api/certificates/verify route, which returns no PII, not through
+    //   a client read of this collection.
+    match /certificates/{certificateId} {
+      allow read: if can_certificates_view();
+      allow write: if false; // Admin SDK only
+    }
+    match /alumniRecords/{participantId} {
+      allow read: if can_alumni_view();
+      allow write: if false; // Admin SDK only (BR-05)
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

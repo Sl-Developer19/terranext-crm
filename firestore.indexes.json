@@ -225,6 +225,22 @@
       "collectionGroup": "scores",
       "queryScope": "COLLECTION_GROUP",
       "fields": [{ "fieldPath": "participantId", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "certificates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participantId", "order": "ASCENDING" },
+        { "fieldPath": "enrolmentId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "enrolments",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "enrolledAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

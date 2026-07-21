@@ -472,6 +472,15 @@ service cloud.firestore {
       }
     }
 
+    // ── employers/* (Doc 03 §1.6, Doc 14 §15, S32) ──────────────────────────
+    // Read: any role with `employers:view`. Write: Admin SDK only, like every
+    //   other staff-side collection — mutations flow through server actions
+    //   so name-uniqueness checks and audit logging can't be bypassed.
+    match /employers/{employerId} {
+      allow read: if can_employers_view();
+      allow write: if false; // Admin SDK only
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

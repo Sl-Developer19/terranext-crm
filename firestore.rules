@@ -378,6 +378,21 @@ service cloud.firestore {
       }
     }
 
+    // ── assessments/* (Doc 03 §1.5, Doc 14 §12) ─────────────────────────────
+    // Read: any role with `assessments:view`. Write: Admin SDK only — the
+    //   pass/fail verdict is derived server-side from the pass mark, so a
+    //   client-writable `result` field would let a tampered write manufacture
+    //   a pass that BR-03 certificate issuance would then honour.
+    match /assessments/{assessmentId} {
+      allow read: if can_assessments_view();
+      allow write: if false; // Admin SDK only
+
+      match /scores/{participantId} {
+        allow read: if can_assessments_view();
+        allow write: if false; // Admin SDK only
+      }
+    }
+
     // ── participants/* (Doc 03 §1.4, Doc 14 §11, BR-01) ─────────────────────
     // Read: every role with `participants:view` — the directory is shared
     //   across the whole staff. Field-level scoping (finance sees fee fields,

@@ -203,6 +203,28 @@
         { "fieldPath": "batchId", "order": "ASCENDING" },
         { "fieldPath": "enrolledAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "assessments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "heldAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "assessments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "batchId", "order": "ASCENDING" },
+        { "fieldPath": "heldAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scores",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [{ "fieldPath": "participantId", "order": "ASCENDING" }]
     }
   ],
   "fieldOverrides": []

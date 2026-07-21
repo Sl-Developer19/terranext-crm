@@ -1,46 +1,35 @@
 import type { Metadata } from 'next';
+import { format } from 'date-fns';
 
 import { PageHeader } from '@/components/layout/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getSession } from '@/lib/auth/session';
-import { visibleModules } from '@/lib/rbac/permissions';
+import { DashboardSections, getDashboard } from '@/features/dashboard';
 import { STAFF_ROLE_LABELS } from '@/lib/rbac/role-labels';
+import { requirePermission } from '@/lib/rbac/require';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
 /**
- * Minimal role-aware landing (Doc 16 S03). Becomes the composed
- * role-specific KPI dashboard (SOP 18.10) once feature modules exist to
- * export widgets — the (app) layout already guarantees a session here.
+ * S03 — the role-scoped CRM dashboard (SOP 15.9), and for the founder the
+ * full SOP 18.10 KPI set.
+ *
+ * Figures are computed per request rather than cached: the SOP asks for
+ * "real-time operational insights", and the aggregate reads are cheap enough
+ * (Firestore `count()`) that caching would trade correctness for very little.
  */
 export default async function DashboardPage() {
-  const session = await getSession();
-  const modules = session ? visibleModules(session.role) : [];
+  const session = await requirePermission('dashboard:view');
+  const dashboard = await getDashboard(session.role);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Dashboard"
-        description={session ? `Signed in as ${STAFF_ROLE_LABELS[session.role]}` : undefined}
+        description={`${STAFF_ROLE_LABELS[session.role]} · figures as at ${format(
+          new Date(dashboard.generatedAt),
+          'PPp',
+        )}`}
       />
-      <Card>
-        <CardHeader>
-          <CardTitle>Your modules</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-xs text-muted-foreground">
-            Scoped to your role per the Doc 04 permission matrix. Role-specific KPI widgets (SOP
-            18.10) land as each feature module ships.
-          </p>
-          <ul className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-            {modules.map((m) => (
-              <li key={m} className="rounded-md bg-muted px-3 py-2 capitalize">
-                {m}
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      <DashboardSections sections={dashboard.sections} />
     </div>
   );
 }

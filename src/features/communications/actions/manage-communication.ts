@@ -67,6 +67,8 @@ export async function sendCommunication(
         bodyPreview: toBodyPreview(body),
         status: 'queued',
         sentAt: null,
+        // Held only until the worker sends it, then deleted (Doc 14 §19).
+        pendingBody: body,
       },
       session.uid,
       session.branchId,

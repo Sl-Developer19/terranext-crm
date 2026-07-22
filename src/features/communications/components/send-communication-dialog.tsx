@@ -32,7 +32,7 @@ import { sendCommunication } from '../actions/manage-communication';
 import { channelLabel } from '../logic';
 import {
   CHANNELS,
-  REF_TYPES,
+  SENDABLE_REF_TYPES,
   sendCommunicationSchema,
   type RecipientOption,
   type SendCommunicationInput,
@@ -160,7 +160,7 @@ export function SendCommunicationDialog({ recipients }: { recipients: RecipientO
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {REF_TYPES.map((value) => (
+                      {SENDABLE_REF_TYPES.map((value) => (
                         <SelectItem key={value} value={value}>
                           {value === 'lead' ? 'Lead' : 'Participant'}
                         </SelectItem>

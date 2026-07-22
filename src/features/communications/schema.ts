@@ -14,8 +14,18 @@ export type Channel = (typeof CHANNELS)[number];
 export const DIRECTIONS = ['outbound', 'inbound'] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 
-export const REF_TYPES = ['lead', 'participant'] as const;
+/**
+ * Doc 14 §19 defines `lead|participant`. `staff` is a deliberate extension for
+ * internal messages (the daily follow-up digest): those must live in the same
+ * log as everything else (FR-10.3), and they are addressed to a colleague
+ * rather than a customer.
+ */
+export const REF_TYPES = ['lead', 'participant', 'staff'] as const;
 export type RefType = (typeof REF_TYPES)[number];
+
+/** What a human may pick in the send dialog — staff digests are system-generated. */
+export const SENDABLE_REF_TYPES = ['lead', 'participant'] as const;
+export type SendableRefType = (typeof SENDABLE_REF_TYPES)[number];
 
 export const COMM_STATUSES = ['queued', 'sent', 'failed'] as const;
 export type CommStatus = (typeof COMM_STATUSES)[number];
@@ -26,7 +36,8 @@ export const BODY_PREVIEW_MAX = 300;
 export const sendCommunicationSchema = z
   .object({
     channel: z.enum(CHANNELS),
-    refType: z.enum(REF_TYPES),
+    // Only the human-addressable types: a staff digest is never composed here.
+    refType: z.enum(SENDABLE_REF_TYPES),
     refId: z.string().min(1, 'Select who this message is about'),
     templateKey: z.string().min(1).nullable().default(null),
     subject: z.string().trim().max(200).optional(),
@@ -51,7 +62,7 @@ export const logCommunicationSchema = z
   .object({
     channel: z.enum(CHANNELS),
     direction: z.enum(DIRECTIONS),
-    refType: z.enum(REF_TYPES),
+    refType: z.enum(SENDABLE_REF_TYPES),
     refId: z.string().min(1, 'Select who this message is about'),
     subject: z.string().trim().max(200).optional(),
     body: z.string().trim().min(1, 'Message body is required').max(5000),

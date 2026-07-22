@@ -1,0 +1,144 @@
+import 'server-only';
+
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+
+import { adminDb } from '@/lib/firebase/admin';
+import { getEmailProvider, getSmsProvider, getWhatsAppProvider } from '@/lib/messaging/providers';
+import type { SendOutcome } from '@/lib/messaging/types';
+
+import { decideNext, isDue } from './dispatch-logic';
+import type { Channel, RefType } from './schema';
+
+/**
+ * Communications dispatch worker (FR-10.3, Doc 19).
+ *
+ * Runs on a schedule and drains the queue the send path wrote. The log doc
+ * always exists before this runs — the worker's only job is to move a message
+ * from `queued` to `sent` or `failed` and to say why.
+ *
+ * Ordering guarantee this deliberately does not make: messages are not sent in
+ * a strict sequence. They are independent notifications, and serialising them
+ * would let one slow recipient hold up everyone else's.
+ */
+
+const BATCH_SIZE = 25;
+
+export interface DispatchSummary {
+  examined: number;
+  sent: number;
+  failed: number;
+  requeued: number;
+  skipped: number;
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** Resolves the destination address for the row's ref, or null if unreachable. */
+async function resolveAddress(
+  refType: RefType,
+  refId: string,
+  channel: Channel,
+): Promise<string | null> {
+  const collection = refType === 'lead' ? 'leads' : refType === 'staff' ? 'users' : 'participants';
+  const doc = await adminDb().collection(collection).doc(refId).get();
+  if (!doc.exists) return null;
+
+  if (refType === 'staff') {
+    // Internal digests are email-only; a staff member's phone is not a
+    // notification channel we have consent to use.
+    return channel === 'email' ? asString(doc.get('email')) || null : null;
+  }
+
+  if (refType === 'lead') {
+    return channel === 'email'
+      ? asString(doc.get('email')) || null
+      : asString(doc.get('phone')) || null;
+  }
+
+  const personal = (doc.get('personal') ?? {}) as Record<string, unknown>;
+  return channel === 'email' ? asString(personal.email) || null : asString(personal.phone) || null;
+}
+
+async function send(channel: Channel, to: string, subject: string, body: string) {
+  if (channel === 'email') {
+    return getEmailProvider().send({ to, subject, body });
+  }
+  const provider = channel === 'whatsapp' ? getWhatsAppProvider() : getSmsProvider();
+  return provider.send({ to, body });
+}
+
+export async function dispatchQueuedCommunications(
+  now: Date = new Date(),
+): Promise<DispatchSummary> {
+  const db = adminDb();
+  const summary: DispatchSummary = { examined: 0, sent: 0, failed: 0, requeued: 0, skipped: 0 };
+
+  const snap = await db
+    .collection('communications')
+    .where('status', '==', 'queued')
+    .where('direction', '==', 'outbound')
+    .limit(BATCH_SIZE)
+    .get();
+
+  for (const doc of snap.docs) {
+    summary.examined += 1;
+
+    const nextAttemptRaw = doc.get('nextAttemptAt');
+    const nextAttemptAt = nextAttemptRaw instanceof Timestamp ? nextAttemptRaw.toDate() : null;
+    if (!isDue(nextAttemptAt, now)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const channel = (asString(doc.get('channel')) || 'email') as Channel;
+    const refType = (asString(doc.get('refType')) || 'lead') as RefType;
+    const refId = asString(doc.get('refId'));
+    const attempts = typeof doc.get('attempts') === 'number' ? (doc.get('attempts') as number) : 0;
+
+    // The body is held transiently for exactly this moment; if it is gone the
+    // preview is all that survives, and sending a truncated message would be
+    // worse than reporting the problem.
+    const body = asString(doc.get('pendingBody'));
+    const address = await resolveAddress(refType, refId, channel);
+
+    let outcome: SendOutcome;
+    if (!address) {
+      outcome = {
+        status: 'failed',
+        reason: `No ${channel === 'email' ? 'email address' : 'phone number'} on file for this ${refType}.`,
+      };
+    } else if (!body) {
+      outcome = { status: 'failed', reason: 'Message body is no longer available to send.' };
+    } else {
+      outcome = await send(channel, address, asString(doc.get('subject')), body);
+    }
+
+    const decision = decideNext(outcome, attempts, now);
+
+    await doc.ref.update({
+      status: decision.status,
+      failureReason: decision.failureReason,
+      attempts: FieldValue.increment(1),
+      nextAttemptAt: decision.nextAttemptAt,
+      ...(decision.status === 'sent'
+        ? {
+            sentAt: now,
+            // Body deleted on success: the provider is the system of record
+            // from here on, and the log keeps its preview (Doc 14 §19).
+            pendingBody: FieldValue.delete(),
+          }
+        : {}),
+      ...(decision.status === 'failed' ? { pendingBody: FieldValue.delete() } : {}),
+      updatedAt: now,
+      updatedBy: 'system',
+    });
+
+    if (decision.status === 'sent') summary.sent += 1;
+    else if (decision.status === 'failed') summary.failed += 1;
+    else summary.requeued += 1;
+  }
+
+  return summary;
+}

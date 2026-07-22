@@ -34,7 +34,7 @@ import {
   CHANNELS,
   DIRECTIONS,
   logCommunicationSchema,
-  REF_TYPES,
+  SENDABLE_REF_TYPES,
   type LogCommunicationInput,
   type RecipientOption,
 } from '../schema';
@@ -166,7 +166,7 @@ export function LogCommunicationDialog({ recipients }: { recipients: RecipientOp
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {REF_TYPES.map((value) => (
+                      {SENDABLE_REF_TYPES.map((value) => (
                         <SelectItem key={value} value={value}>
                           {value === 'lead' ? 'Lead' : 'Participant'}
                         </SelectItem>

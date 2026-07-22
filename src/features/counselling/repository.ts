@@ -38,7 +38,7 @@ async function loadLookups(): Promise<Lookups> {
   ]);
 
   return {
-    leadNames: new Map(leads.docs.map((d) => [d.id, asString(d.get('fullName'))])),
+    leadNames: new Map(leads.docs.map((d) => [d.id, asString(d.get('name'))])),
     userNames: new Map(users.docs.map((d) => [d.id, asString(d.get('displayName'))])),
     programmeNames: new Map(programmes.docs.map((d) => [d.id, asString(d.get('name'))])),
   };
@@ -107,12 +107,12 @@ export async function findSessionsByLead(): Promise<Map<string, CounsellingSessi
 
 /** Leads a consultant can still counsel — the converted ones are no longer candidates. */
 export async function findCounsellableLeads(): Promise<CounsellingLeadOption[]> {
-  const snap = await adminDb().collection('leads').orderBy('fullName').limit(500).get();
+  const snap = await adminDb().collection('leads').orderBy('name').limit(500).get();
   return snap.docs
     .filter((doc) => asString(doc.get('stage')) !== 'admitted')
     .map((doc) => ({
       id: doc.id,
-      name: asString(doc.get('fullName')),
+      name: asString(doc.get('name')),
       stage: asString(doc.get('stage')),
     }));
 }

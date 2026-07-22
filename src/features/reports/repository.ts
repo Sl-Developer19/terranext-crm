@@ -163,7 +163,7 @@ export async function loadDuplicateSuspects(): Promise<DuplicateSuspectInput[]> 
   const snap = await adminDb().collection('leads').limit(SCAN_CAP).get();
   return snap.docs.map((doc) => ({
     phone: asString(doc.get('phone')),
-    name: asString(doc.get('fullName')),
+    name: asString(doc.get('name')),
     converted: asString(doc.get('stage')) === 'admitted',
   }));
 }

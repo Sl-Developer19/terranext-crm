@@ -44,6 +44,11 @@ service cloud.firestore {
     match /securityEvents/{eventId} {
       allow read, write: if false;
     }
+    // Public-endpoint rate-limit counters (createLead). Admin SDK only — a
+    // client that could read or reset these could trivially defeat them.
+    match /rateLimits/{windowKey} {
+      allow read, write: if false;
+    }
 
     // ── auditLogs (Doc 18, ADR-007: create-only, immutable) ─────────────────
     // Read: system_admin + founder only (Doc 04 §3, SOP 17.16).

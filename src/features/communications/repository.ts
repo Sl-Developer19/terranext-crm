@@ -38,7 +38,7 @@ async function refNames(): Promise<Map<string, string>> {
 
   const names = new Map<string, string>();
   for (const doc of leads.docs) {
-    names.set(`lead:${doc.id}`, asString(doc.get('fullName')));
+    names.set(`lead:${doc.id}`, asString(doc.get('name')));
   }
   for (const doc of participants.docs) {
     const personal = (doc.get('personal') ?? {}) as Record<string, unknown>;
@@ -78,13 +78,13 @@ export async function findCommunications(): Promise<Communication[]> {
 export async function findRecipientOptions(): Promise<RecipientOption[]> {
   const db = adminDb();
   const [leads, participants] = await Promise.all([
-    db.collection('leads').orderBy('fullName').limit(500).get(),
+    db.collection('leads').orderBy('name').limit(500).get(),
     db.collection('participants').limit(500).get(),
   ]);
 
   const options: RecipientOption[] = leads.docs.map((doc) => ({
     id: doc.id,
-    name: asString(doc.get('fullName')),
+    name: asString(doc.get('name')),
     refType: 'lead' as const,
   }));
 

@@ -39,7 +39,7 @@ export async function findQueueLeads(stages: readonly string[]): Promise<QueueLe
 
   return snap.docs.map((doc) => ({
     id: doc.id,
-    name: asString(doc.get('fullName')),
+    name: asString(doc.get('name')),
     phone: asString(doc.get('phone')),
     email: asStringOrNull(doc.get('email')),
     stage: asString(doc.get('stage')),
@@ -54,7 +54,7 @@ export async function findLeadForConversion(leadId: string): Promise<QueueLead |
   if (!doc.exists) return null;
   return {
     id: doc.id,
-    name: asString(doc.get('fullName')),
+    name: asString(doc.get('name')),
     phone: asString(doc.get('phone')),
     email: asStringOrNull(doc.get('email')),
     stage: asString(doc.get('stage')),

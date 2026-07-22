@@ -92,7 +92,7 @@ service cloud.firestore {
 
 // <<GENERATED_RBAC_START>>
     // ── GENERATED RBAC predicates (condition C-1) ──────────────────────────
-    // Source: lib/rbac/permissions.ts · map-version: 7AAA5EEC
+    // Source: lib/rbac/permissions.ts · map-version: B5F5C2BE
     // DO NOT EDIT this block manually — run scripts/generate-firestore-predicates.mts
     // and commit the result. CI will fail if this block has drifted.
     //
@@ -102,176 +102,377 @@ service cloud.firestore {
     function can_dashboard_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
     }
+    function can_dashboard_create() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_dashboard_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_dashboard_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_dashboard_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_dashboard_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
     function can_dashboard_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_dashboard_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_leads_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_leads_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_leads_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_leads_delete() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_leads_assign() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_leads_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_leads_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_leads_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_counselling_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_counselling_create() {
-      return isStaff() && request.auth.token.role in ['consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'consultant'];
     }
     function can_counselling_update() {
-      return isStaff() && request.auth.token.role in ['consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'consultant'];
+    }
+    function can_counselling_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_counselling_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_counselling_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_counselling_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_counselling_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_admissions_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_admissions_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_admissions_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_admissions_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_admissions_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_admissions_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_admissions_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_admissions_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_participants_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
     }
     function can_participants_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_participants_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator'];
+    }
+    function can_participants_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_participants_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_participants_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_participants_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_participants_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_parents_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator'];
     }
     function can_parents_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_parents_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
+    }
+    function can_parents_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_parents_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_parents_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_parents_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_parents_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_programmes_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'placement'];
     }
     function can_programmes_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator'];
     }
     function can_programmes_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator'];
+    }
+    function can_programmes_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_programmes_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_programmes_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_programmes_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_programmes_configure() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_batches_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator', 'trainer', 'placement'];
     }
     function can_batches_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator'];
     }
     function can_batches_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator'];
+    }
+    function can_batches_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_batches_assign() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator'];
+    }
+    function can_batches_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_batches_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_batches_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_attendance_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator', 'trainer'];
     }
     function can_attendance_create() {
-      return isStaff() && request.auth.token.role in ['trainer'];
+      return isStaff() && request.auth.token.role in ['founder', 'trainer'];
     }
     function can_attendance_update() {
-      return isStaff() && request.auth.token.role in ['coordinator', 'trainer'];
+      return isStaff() && request.auth.token.role in ['founder', 'coordinator', 'trainer'];
+    }
+    function can_attendance_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_attendance_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_attendance_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_attendance_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_attendance_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_assessments_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator', 'trainer', 'placement'];
     }
     function can_assessments_create() {
-      return isStaff() && request.auth.token.role in ['coordinator', 'trainer'];
+      return isStaff() && request.auth.token.role in ['founder', 'coordinator', 'trainer'];
     }
     function can_assessments_update() {
-      return isStaff() && request.auth.token.role in ['coordinator', 'trainer'];
+      return isStaff() && request.auth.token.role in ['founder', 'coordinator', 'trainer'];
+    }
+    function can_assessments_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_assessments_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_assessments_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_assessments_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_assessments_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_certificates_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'coordinator', 'trainer', 'placement'];
     }
     function can_certificates_create() {
-      return isStaff() && request.auth.token.role in ['coordinator'];
+      return isStaff() && request.auth.token.role in ['founder', 'coordinator'];
+    }
+    function can_certificates_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_certificates_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_certificates_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_certificates_approve() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_certificates_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_certificates_configure() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_career_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'placement'];
     }
     function can_career_create() {
-      return isStaff() && request.auth.token.role in ['placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'placement'];
     }
     function can_career_update() {
-      return isStaff() && request.auth.token.role in ['placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'placement'];
+    }
+    function can_career_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_career_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_career_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_career_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_career_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_placements_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'placement'];
     }
     function can_placements_create() {
-      return isStaff() && request.auth.token.role in ['placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'placement'];
     }
     function can_placements_update() {
-      return isStaff() && request.auth.token.role in ['placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'placement'];
+    }
+    function can_placements_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_placements_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_placements_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_placements_export() {
       return isStaff() && request.auth.token.role in ['founder', 'placement'];
+    }
+    function can_placements_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_employers_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'placement'];
     }
     function can_employers_create() {
-      return isStaff() && request.auth.token.role in ['placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'placement'];
     }
     function can_employers_update() {
-      return isStaff() && request.auth.token.role in ['placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'placement'];
+    }
+    function can_employers_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_employers_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_employers_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_employers_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_employers_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_alumni_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'consultant', 'coordinator', 'placement'];
     }
     function can_alumni_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_alumni_update() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+    }
+    function can_alumni_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_alumni_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_alumni_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_alumni_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_alumni_configure() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_fees_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'finance'];
     }
     function can_fees_create() {
-      return isStaff() && request.auth.token.role in ['finance'];
+      return isStaff() && request.auth.token.role in ['founder', 'finance'];
     }
     function can_fees_update() {
-      return isStaff() && request.auth.token.role in ['finance'];
+      return isStaff() && request.auth.token.role in ['founder', 'finance'];
+    }
+    function can_fees_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_fees_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_fees_approve() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
@@ -279,56 +480,176 @@ service cloud.firestore {
     function can_fees_export() {
       return isStaff() && request.auth.token.role in ['founder', 'finance'];
     }
+    function can_fees_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
     function can_communications_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
     }
     function can_communications_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
+    }
+    function can_communications_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_communications_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_communications_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_communications_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_communications_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_communications_configure() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_reports_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
     }
+    function can_reports_create() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_reports_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_reports_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_reports_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_reports_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
     function can_reports_export() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'finance', 'placement'];
+    }
+    function can_reports_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_colleges_view() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_colleges_create() {
-      return isStaff() && request.auth.token.role in ['ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
     }
     function can_colleges_update() {
-      return isStaff() && request.auth.token.role in ['ops_manager', 'consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
+    }
+    function can_colleges_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_colleges_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_colleges_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_colleges_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_colleges_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_users_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_users_create() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_users_update() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
+    }
+    function can_users_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_users_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_users_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_users_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_users_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_roles_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
+    function can_roles_create() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_roles_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_roles_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_roles_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_roles_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_roles_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
     function can_roles_configure() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_audit_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
+    function can_audit_create() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_audit_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_audit_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_audit_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_audit_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
     function can_audit_export() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
+    }
+    function can_audit_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_settings_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
+    function can_settings_create() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_settings_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_settings_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_settings_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_settings_approve() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_settings_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
     function can_settings_configure() {
-      return isStaff() && request.auth.token.role in ['system_admin'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
 
     // Usage in rules: instead of 'can("leads", "view")',

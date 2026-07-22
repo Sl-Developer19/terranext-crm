@@ -164,6 +164,39 @@ describe('read scoping follows the permission map', () => {
     // business-data role (Doc 04 §3).
     await assertFails(getDoc(doc(authed(env, 'u1', 'system_admin'), 'leads/lead1')));
   });
+
+  it('lets Founder read every collection (super administrator)', async () => {
+    // Founder holds every permission, so the generated predicates must admit
+    // it everywhere. This is the rules-side half of the guarantee — passing
+    // `can()` server-side while Firestore refuses the same read would be a
+    // split-brain that looks like data loss.
+    const db = authed(env, 'founder1', 'founder');
+    for (const path of [
+      'leads/lead1',
+      'participants/TNX-2026-00001',
+      'counsellingSessions/s1',
+      'communications/c1',
+      'colleges/col1',
+      'alumniRecords/TNX-2026-00001',
+      'certificates/cert1',
+      'feeAccounts/enr1',
+      'auditLogs/a1',
+      'settings/general',
+      'users/u1',
+    ]) {
+      await assertSucceeds(getDoc(doc(db, path)));
+    }
+  });
+
+  it('still refuses Founder a direct client write', async () => {
+    // Unrestricted authorization is not unrestricted transport. Every
+    // mutation goes through a server action so BR checks and audit logging
+    // cannot be bypassed — that holds for Founder like everyone else.
+    const db = authed(env, 'founder1', 'founder');
+    await assertFails(setDoc(doc(db, 'leads/lead1'), { tampered: true }));
+    await assertFails(setDoc(doc(db, 'auditLogs/a1'), { action: 'tampered' }));
+    await assertFails(setDoc(doc(db, 'counters/participantId'), { current: 9999 }));
+  });
 });
 
 describe('users and settings', () => {

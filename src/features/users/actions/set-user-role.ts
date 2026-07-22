@@ -14,18 +14,23 @@ import {
 } from '@/lib/utils/result';
 import type { StaffRole } from '@/types/common';
 
-import { isSelfTargeting, wouldStrandPlatform } from '../logic';
+import { isSelfTargeting, leavesProtectedRole, wouldStrandPlatform } from '../logic';
 import { setUserRoleSchema, type SetUserRoleInput } from '../schema';
 
-async function countOtherActiveSystemAdmins(excludingUid: string): Promise<number> {
+async function countOtherActiveHolders(role: StaffRole, excludingUid: string): Promise<number> {
   const snap = await adminDb()
     .collection('users')
-    .where('role', '==', 'system_admin' satisfies StaffRole)
+    .where('role', '==', role)
     .where('status', '==', 'active')
     .where('deletedAt', '==', null)
     .get();
   return snap.docs.filter((d) => d.id !== excludingUid).length;
 }
+
+const ROLE_LABEL: Partial<Record<StaffRole, string>> = {
+  system_admin: 'System Administrator',
+  founder: 'Founder',
+};
 
 /** Doc 19 setUserRole — precondition: never strand the platform without a System Administrator. */
 export async function setUserRole(input: SetUserRoleInput): Promise<Result<{ ok: true }>> {
@@ -51,13 +56,14 @@ export async function setUserRole(input: SetUserRoleInput): Promise<Result<{ ok:
   if (!snap.exists) return notFoundError('This staff account no longer exists.');
   const before = snap.get('role') as StaffRole;
 
-  if (before === 'system_admin' && role !== 'system_admin') {
-    const remaining = await countOtherActiveSystemAdmins(uid);
+  // Guards the seat being *vacated*, not the one being taken: demoting the
+  // last Founder to system_admin still strands the platform's super-admin.
+  if (leavesProtectedRole(before, role)) {
+    const remaining = await countOtherActiveHolders(before, uid);
     if (wouldStrandPlatform(remaining)) {
       return err({
         code: 'precondition',
-        message:
-          'This is the last active System Administrator — promote another account before changing this role.',
+        message: `This is the last active ${ROLE_LABEL[before] ?? before} — promote another account before changing this role.`,
         retryable: false,
       });
     }

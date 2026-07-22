@@ -14,18 +14,23 @@ import {
 } from '@/lib/utils/result';
 import type { StaffRole } from '@/types/common';
 
-import { isSelfTargeting, wouldStrandPlatform } from '../logic';
+import { isProtectedRole, isSelfTargeting, wouldStrandPlatform } from '../logic';
 import { setUserStatusSchema, type SetUserStatusInput } from '../schema';
 
-async function countOtherActiveSystemAdmins(excludingUid: string): Promise<number> {
+async function countOtherActiveHolders(role: StaffRole, excludingUid: string): Promise<number> {
   const snap = await adminDb()
     .collection('users')
-    .where('role', '==', 'system_admin' satisfies StaffRole)
+    .where('role', '==', role)
     .where('status', '==', 'active')
     .where('deletedAt', '==', null)
     .get();
   return snap.docs.filter((d) => d.id !== excludingUid).length;
 }
+
+const ROLE_LABEL: Partial<Record<StaffRole, string>> = {
+  system_admin: 'System Administrator',
+  founder: 'Founder',
+};
 
 /**
  * Doc 19 setUserStatus — precondition: not self. Disabling revokes refresh
@@ -55,13 +60,15 @@ export async function setUserStatus(input: SetUserStatusInput): Promise<Result<{
   const before = snap.get('status') as 'active' | 'disabled';
   const role = snap.get('role') as StaffRole;
 
-  if (status === 'disabled' && role === 'system_admin') {
-    const remaining = await countOtherActiveSystemAdmins(uid);
+  // A compromised Founder account must still be disableable, so this guards
+  // the *last* holder rather than the role outright — locking the role itself
+  // would make account compromise unrecoverable.
+  if (status === 'disabled' && isProtectedRole(role)) {
+    const remaining = await countOtherActiveHolders(role, uid);
     if (wouldStrandPlatform(remaining)) {
       return err({
         code: 'precondition',
-        message:
-          'This is the last active System Administrator — promote another account before disabling this one.',
+        message: `This is the last active ${ROLE_LABEL[role] ?? role} — promote another account before disabling this one.`,
         retryable: false,
       });
     }

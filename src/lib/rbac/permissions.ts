@@ -62,35 +62,50 @@ export type Permission = `${Module}:${Action}`;
 const p = (module: Module, ...actions: Action[]): Permission[] =>
   actions.map((a) => `${module}:${a}` as Permission);
 
+/**
+ * Every permission the system defines — the full `Module × Action` product.
+ *
+ * Derived rather than enumerated on purpose: a module added to `MODULES` or an
+ * action added to `ACTIONS` is included here automatically, which is what makes
+ * the Founder grant cover *future* modules without anyone remembering to come
+ * back and widen it.
+ */
+export const ALL_PERMISSIONS: readonly Permission[] = MODULES.flatMap((module) =>
+  ACTIONS.map((action) => `${module}:${action}` as Permission),
+);
+
+/**
+ * The super-administrator role (owner decision, 2026-07-22).
+ *
+ * Founder is unrestricted by design: it holds every permission, is exempt from
+ * `can()` entirely, and cannot be stranded by user management. It is defined in
+ * code, so it cannot be deleted or edited at runtime — ADR-011 makes every role
+ * change a reviewed PR, and there is no runtime role editor to weaken.
+ *
+ * What this deliberately does NOT do: weaken authentication. Founder still
+ * signs in, still holds a session, and every Founder action is still audited.
+ * Unrestricted authorization is not anonymous access.
+ */
+export const SUPER_ROLE = 'founder' as const satisfies StaffRole;
+
+export function isSuperRole(role: StaffRole): boolean {
+  return role === SUPER_ROLE;
+}
+
 /** Doc 04 §3 permission matrix, row by row. */
 export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
-  founder: [
-    ...p('dashboard', 'view', 'export'),
-    ...p('leads', 'view', 'export'),
-    ...p('counselling', 'view'),
-    ...p('admissions', 'view'),
-    ...p('participants', 'view', 'export'),
-    ...p('parents', 'view', 'export'),
-    ...p('programmes', 'view'),
-    ...p('batches', 'view'),
-    ...p('attendance', 'view', 'export'),
-    ...p('assessments', 'view'),
-    ...p('certificates', 'view'),
-    ...p('career', 'view'),
-    ...p('placements', 'view', 'export'),
-    ...p('employers', 'view'),
-    // Founder can also record engagement and toggle success-story consent
-    // (S33) — the same 'update' grant ops_manager holds for this module.
-    ...p('alumni', 'view', 'update', 'export'),
-    ...p('fees', 'view', 'export', 'approve'),
-    ...p('communications', 'view'),
-    ...p('reports', 'view', 'export'),
-    ...p('colleges', 'view'),
-    ...p('users', 'view'),
-    ...p('roles', 'view'),
-    ...p('audit', 'view'),
-    ...p('settings', 'view'),
-  ],
+  /**
+   * Super administrator (owner decision, 2026-07-22). Holds the complete
+   * permission set, including every module added in future.
+   *
+   * This is spread from `ALL_PERMISSIONS` rather than listed row by row for a
+   * concrete reason: the Firestore rules codegen reads this map, so an
+   * enumerated list would silently omit Founder from the rule predicates for
+   * any module added later. Founder would then pass server-side `can()` and be
+   * refused by Firestore on the very same request — a split-brain that reads
+   * like data corruption rather than a permissions bug.
+   */
+  founder: ALL_PERMISSIONS,
   system_admin: [
     ...p('dashboard', 'view'),
     ...p('programmes', 'configure'),
@@ -189,6 +204,13 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
 };
 
 export function can(role: StaffRole, permission: Permission): boolean {
+  // Founder is exempt, not merely well-granted. `ROLE_PERMISSIONS.founder`
+  // already contains everything, so this branch is redundant today — which is
+  // exactly why it is here. It is the guarantee that survives someone editing
+  // the map, and it means Founder cannot be locked out of the platform by a
+  // permissions mistake.
+  if (isSuperRole(role)) return true;
+
   return ROLE_PERMISSIONS[role].includes(permission);
 }
 

@@ -494,6 +494,17 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── counsellingSessions/* (Doc 03 §1.3, Doc 14 §9, BR-02, S12) ──────────
+    // Read: any role with `counselling:view`. Write: Admin SDK only — this
+    //   collection is the evidence BR-02 gates admissions on, and the shape
+    //   rule (outcome `recommended` requires a non-null recommendation) is
+    //   re-checked in the server action against a real programme. A client
+    //   write path could mint the recommendation an admission rests on.
+    match /counsellingSessions/{sessionId} {
+      allow read: if can_counselling_view();
+      allow write: if false; // Admin SDK only (BR-02 evidence)
+    }
+
     // ── communications/* (Doc 03 §1.7, Doc 14 §19, FR-10.3, S41) ────────────
     // Read: any role with `communications:view`. Write: Admin SDK only.
     //   Doc 18 sketched a staff manual-log create (`byUid == uid`), but the

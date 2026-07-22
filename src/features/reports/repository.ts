@@ -129,11 +129,29 @@ export async function loadCounsellingConversion(): Promise<CounsellingConversion
     safeCount(() => db.collection('leads').where('stage', '==', 'admitted')),
   ]);
 
-  // BR-02's always-zero check needs per-admission counselling evidence. Leads
-  // carry no counselling milestone today (the S12 counselling module is not
-  // built), so there is nothing to check against — `null` makes the report say
-  // "not assessable" rather than assert a guarantee nothing verified.
-  return { counselled, admitted, admittedWithoutCounselling: null };
+  // BR-02's always-zero check: every admitted lead must have a counselling
+  // session recommending them. Both sides are read in bulk rather than
+  // per-lead — a read per admission would be an N+1 on the request path.
+  const [admittedLeads, sessions] = await Promise.all([
+    db.collection('leads').where('stage', '==', 'admitted').limit(SCAN_CAP).get(),
+    db
+      .collection('counsellingSessions')
+      .where('outcome', '==', 'recommended')
+      .limit(SCAN_CAP)
+      .get(),
+  ]);
+
+  const recommendedLeadIds = new Set(
+    sessions.docs
+      .filter((doc) => doc.get('recommendation') !== null)
+      .map((doc) => asString(doc.get('leadId'))),
+  );
+
+  const admittedWithoutCounselling = admittedLeads.docs.filter(
+    (doc) => !recommendedLeadIds.has(doc.id),
+  ).length;
+
+  return { counselled, admitted, admittedWithoutCounselling };
 }
 
 export async function loadAlumniMemberSince(): Promise<string[]> {

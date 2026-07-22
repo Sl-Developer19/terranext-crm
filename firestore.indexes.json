@@ -296,6 +296,14 @@
         { "fieldPath": "refId", "order": "ASCENDING" },
         { "fieldPath": "sentAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "counsellingSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "heldAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

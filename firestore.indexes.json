@@ -323,11 +323,6 @@
       ]
     },
     {
-      "collectionGroup": "communications",
-      "queryScope": "COLLECTION",
-      "fields": [{ "fieldPath": "createdAt", "order": "DESCENDING" }]
-    },
-    {
       "collectionGroup": "leads",
       "queryScope": "COLLECTION",
       "fields": [

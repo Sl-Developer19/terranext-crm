@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { ORGANISATION, senderAddress } from '@/config/organisation';
+
 import {
   outcomeForStatus,
   type EmailMessage,
@@ -65,19 +67,25 @@ const consoleSmsProvider: SmsProvider = {
   },
 };
 
-function resendProvider(apiKey: string, from: string): EmailProvider {
+function resendProvider(apiKey: string): EmailProvider {
   return {
     name: 'resend',
     send: (message: EmailMessage) =>
       postJson(
         'https://api.resend.com/emails',
         { Authorization: `Bearer ${apiKey}` },
-        { from, to: [message.to], subject: message.subject, text: message.body },
+        {
+          from: senderAddress(),
+          to: [message.to],
+          reply_to: ORGANISATION.replyTo,
+          subject: message.subject,
+          text: message.body,
+        },
       ),
   };
 }
 
-function sendgridProvider(apiKey: string, from: string): EmailProvider {
+function sendgridProvider(apiKey: string): EmailProvider {
   return {
     name: 'sendgrid',
     send: (message: EmailMessage) =>
@@ -86,7 +94,8 @@ function sendgridProvider(apiKey: string, from: string): EmailProvider {
         { Authorization: `Bearer ${apiKey}` },
         {
           personalizations: [{ to: [{ email: message.to }] }],
-          from: { email: from },
+          from: { email: ORGANISATION.senderEmail, name: ORGANISATION.senderName },
+          reply_to: { email: ORGANISATION.replyTo },
           subject: message.subject,
           content: [{ type: 'text/plain', value: message.body }],
         },
@@ -130,14 +139,17 @@ function twilioProvider(accountSid: string, authToken: string, from: string): Sm
 }
 
 export function getEmailProvider(): EmailProvider {
-  const from = process.env.EMAIL_FROM ?? '';
   const provider = process.env.EMAIL_PROVIDER;
 
-  if (provider === 'resend' && process.env.RESEND_API_KEY && from) {
-    return resendProvider(process.env.RESEND_API_KEY, from);
+  // The sender identity has a sensible default (config/organisation.ts), so
+  // only the API key is a hard requirement — credentials come from the
+  // environment and are never defaulted, since a wrong key fails loudly but a
+  // wrong *sender* would silently send as the wrong business.
+  if (provider === 'resend' && process.env.RESEND_API_KEY) {
+    return resendProvider(process.env.RESEND_API_KEY);
   }
-  if (provider === 'sendgrid' && process.env.SENDGRID_API_KEY && from) {
-    return sendgridProvider(process.env.SENDGRID_API_KEY, from);
+  if (provider === 'sendgrid' && process.env.SENDGRID_API_KEY) {
+    return sendgridProvider(process.env.SENDGRID_API_KEY);
   }
   // Misconfiguration degrades to the console provider rather than throwing at
   // module load, which would take the whole app down over an unset env var.

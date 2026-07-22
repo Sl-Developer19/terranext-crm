@@ -33,8 +33,7 @@ Set on the App Hosting backend (`firebase apphosting:secrets:set` for secrets, `
 | Variable | Values | Notes |
 |---|---|---|
 | `EMAIL_PROVIDER` | `resend` \| `sendgrid` | Unset ⇒ email never sends; log shows `queued` with a reason |
-| `RESEND_API_KEY` / `SENDGRID_API_KEY` | — | **Secret.** Matching the chosen provider |
-| `EMAIL_FROM` | e.g. `no-reply@terranextglobal.com` | Must be a verified sender on the provider |
+| `RESEND_API_KEY` / `SENDGRID_API_KEY` | — | **Secret.** Matching the chosen provider. The *only* hard requirement — sender identity has defaults |
 | `SMS_PROVIDER` | `twilio` | Unset ⇒ SMS/WhatsApp never send |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | — | **Secret.** |
 | `TWILIO_FROM` | E.164 number | WhatsApp reuses this with a `whatsapp:` prefix |
@@ -44,6 +43,21 @@ Set on the App Hosting backend (`firebase apphosting:secrets:set` for secrets, `
 | Variable | Purpose |
 |---|---|
 | `PUBLIC_INTAKE_ORIGINS` | Comma-separated website origins allowed to POST `/api/createLead`. Defaults to the production domains in `src/config/public-intake.ts` |
+
+### 1.5 Sender identity — defaults ship in code
+
+`src/config/organisation.ts` is the single source of truth for outbound identity. Defaults:
+
+| Field | Value |
+|---|---|
+| Sender name | TerraNext Global Ventures |
+| Sender email | pp@terranextglobal.com |
+| Reply-To | pp@terranextglobal.com |
+| Contact number | +91 81243 60360 |
+
+These appear in the `From` header, `Reply-To`, every email footer, SMS/WhatsApp signatures, and templates that invite the reader to call. Changing the number is a one-line edit there — never a sweep through templates.
+
+Override per environment with `EMAIL_FROM`, `EMAIL_FROM_NAME`, `EMAIL_REPLY_TO`, `ORG_CONTACT_PHONE`, `ORG_CONTACT_PHONE_DISPLAY`. **Do this on staging**, so a test deploy cannot send as the live business. The sending address must be a verified sender on the provider or mail will be rejected.
 
 ---
 

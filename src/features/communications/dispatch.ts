@@ -2,6 +2,7 @@ import 'server-only';
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
+import { emailSignature, smsSignature } from '@/config/organisation';
 import { adminDb } from '@/lib/firebase/admin';
 import { getEmailProvider, getSmsProvider, getWhatsAppProvider } from '@/lib/messaging/providers';
 import type { SendOutcome } from '@/lib/messaging/types';
@@ -61,12 +62,19 @@ async function resolveAddress(
   return channel === 'email' ? asString(personal.email) || null : asString(personal.phone) || null;
 }
 
+/**
+ * The single outbound chokepoint, which is why the signature is appended here
+ * rather than baked into template bodies. Every message — templated, manually
+ * composed, or a system digest — leaves signed, and changing the contact
+ * number is a one-line config edit rather than a sweep through every template.
+ * Stored bodies stay clean of presentation.
+ */
 async function send(channel: Channel, to: string, subject: string, body: string) {
   if (channel === 'email') {
-    return getEmailProvider().send({ to, subject, body });
+    return getEmailProvider().send({ to, subject, body: `${body}\n${emailSignature()}` });
   }
   const provider = channel === 'whatsapp' ? getWhatsAppProvider() : getSmsProvider();
-  return provider.send({ to, body });
+  return provider.send({ to, body: `${body}${smsSignature()}` });
 }
 
 export async function dispatchQueuedCommunications(

@@ -45,3 +45,21 @@ export function isSelfTargeting(actorUid: string, targetUid: string): boolean {
 export function leavesProtectedRole(before: StaffRole, after: StaffRole): boolean {
   return isProtectedRole(before) && before !== after;
 }
+
+/**
+ * Only a Founder may hand out the Founder role.
+ *
+ * Without this, the super role is reachable by privilege escalation:
+ * `system_admin` holds `users:create` and `users:update`, so it could simply
+ * promote itself an accomplice — or a fresh account it controls — to Founder
+ * and inherit unrestricted access. Guarding the *grant* is what makes Founder
+ * genuinely held rather than merely configured.
+ *
+ * This is a separate axis from `can()`. The actor may hold `users:update` and
+ * still be refused this particular assignment; a permission to manage users is
+ * not a permission to mint super-administrators.
+ */
+export function canAssignRole(actorRole: StaffRole, targetRole: StaffRole): boolean {
+  if (targetRole === SUPER_ROLE) return actorRole === SUPER_ROLE;
+  return true;
+}

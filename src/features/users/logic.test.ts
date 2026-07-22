@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { can } from '@/lib/rbac/permissions';
 import { STAFF_ROLES } from '@/types/common';
 
 import {
+  canAssignRole,
   isProtectedRole,
   isSelfTargeting,
   leavesProtectedRole,
@@ -67,6 +69,50 @@ describe('leavesProtectedRole', () => {
 
   it('ignores changes between ordinary roles', () => {
     expect(leavesProtectedRole('trainer', 'coordinator')).toBe(false);
+  });
+});
+
+describe('canAssignRole — only a Founder may hand out Founder', () => {
+  const ORDINARY = STAFF_ROLES.filter((role) => role !== 'founder');
+
+  it('lets a Founder assign Founder', () => {
+    expect(canAssignRole('founder', 'founder')).toBe(true);
+  });
+
+  it('refuses a System Administrator assigning Founder', () => {
+    // system_admin holds users:create and users:update, so without this guard
+    // it could promote an accomplice and inherit unrestricted access.
+    expect(canAssignRole('system_admin', 'founder')).toBe(false);
+  });
+
+  it('refuses every non-Founder role assigning Founder', () => {
+    for (const role of ORDINARY) {
+      expect(canAssignRole(role, 'founder'), role).toBe(false);
+    }
+  });
+
+  it('supports ownership transfer: a Founder promotes a successor', () => {
+    // Transfer is two audited steps — promote the successor, then demote the
+    // outgoing Founder. Both are permitted while two Founders exist, which is
+    // what keeps the last-holder guard from blocking a legitimate handover.
+    expect(canAssignRole('founder', 'founder')).toBe(true);
+    expect(leavesProtectedRole('founder', 'ops_manager')).toBe(true);
+    expect(wouldStrandPlatform(1)).toBe(false);
+  });
+
+  it('does not restrict assigning ordinary roles', () => {
+    // The guard is narrow on purpose: it protects the super role only, and
+    // must not turn system_admin into a role that cannot manage staff.
+    for (const target of ORDINARY) {
+      expect(canAssignRole('system_admin', target), target).toBe(true);
+      expect(canAssignRole('ops_manager', target), target).toBe(true);
+    }
+  });
+
+  it('is independent of who holds users:update', () => {
+    // Authority to manage users is not authority to mint super-admins.
+    expect(can('system_admin', 'users:update')).toBe(true);
+    expect(canAssignRole('system_admin', 'founder')).toBe(false);
   });
 });
 

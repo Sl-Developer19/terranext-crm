@@ -14,7 +14,7 @@ import {
 } from '@/lib/utils/result';
 import type { StaffRole } from '@/types/common';
 
-import { isSelfTargeting, leavesProtectedRole, wouldStrandPlatform } from '../logic';
+import { canAssignRole, isSelfTargeting, leavesProtectedRole, wouldStrandPlatform } from '../logic';
 import { setUserRoleSchema, type SetUserRoleInput } from '../schema';
 
 async function countOtherActiveHolders(role: StaffRole, excludingUid: string): Promise<number> {
@@ -48,6 +48,13 @@ export async function setUserRole(input: SetUserRoleInput): Promise<Result<{ ok:
       message: 'You cannot change your own role. Ask another system administrator.',
       retryable: false,
     });
+  }
+
+  // Holding `users:update` is not authority to mint a super-administrator.
+  // Checked before any read so the refusal costs nothing and reveals nothing
+  // about whether the target account exists.
+  if (!canAssignRole(session.role, role)) {
+    return permissionError('Only a Founder can assign the Founder role.');
   }
 
   const db = adminDb();

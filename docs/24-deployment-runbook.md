@@ -119,6 +119,32 @@ These cannot be done from application code. Each is required once per project.
 
 ---
 
+## 3a. Founder Bootstrap (once, before first sign-in)
+
+Founder is the super administrator, and **only an existing Founder may assign the Founder role** — in-app and in `provisionUser` alike. The first one therefore cannot be created from inside the application; this script is the single deliberate exception, authorised by possession of the service-account key.
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+node scripts/bootstrap-founder.mjs --email founder@terranextglobal.com --name "Full Name"
+```
+
+It creates the account **without a password** and prints a one-hour reset link — no credential passes through the terminal.
+
+**It refuses to run if any Founder already exists.** That check is what stops the script being a permanent privilege-escalation backdoor. After the first Founder exists, every further grant or transfer goes through the audited in-app flow.
+
+`--force` overrides the refusal for a genuinely unrecoverable Founder. It is recorded in the audit register as an `override` carrying its reason, because a second super administrator appearing is exactly the event a reviewer needs to find later.
+
+### Transferring ownership
+
+Two audited steps, both performed by the outgoing Founder:
+
+1. Promote the successor to Founder (Admin → Users).
+2. Demote yourself to another role.
+
+Order matters. The last-holder guard blocks step 2 until a second Founder exists, which is the point — there is no window where the platform has no Founder.
+
+---
+
 ## 4. Cloud Scheduler Jobs
 
 Three jobs. All POST with the `JOBS_SECRET` bearer token. Replace `$CRM_URL` and `$JOBS_SECRET`.
@@ -258,6 +284,9 @@ Nothing here is optional. `[ ]` means unverified.
 - [ ] App deployed; the rollout is serving
 
 ### Post-deployment verification
+- [ ] Founder bootstrapped (§3a); password set via the reset link
+- [ ] Re-running the bootstrap script is **refused** (proves the backdoor is closed)
+- [ ] A System Administrator cannot assign the Founder role in Admin → Users
 - [ ] Sign in as each of the 8 roles; confirm the nav matches the permission map
 - [ ] A role without a grant is redirected from that module's URL
 - [ ] Submit the website enquiry form → lead appears with `source: website`, `stage: new`

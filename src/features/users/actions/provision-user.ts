@@ -13,6 +13,7 @@ import {
   type Result,
 } from '@/lib/utils/result';
 
+import { canAssignRole } from '../logic';
 import { provisionUserSchema, type ProvisionUserInput } from '../schema';
 
 export interface ProvisionUserResult {
@@ -48,6 +49,13 @@ export async function provisionUser(
     return validationError(fields);
   }
   const { email, displayName, phone, role, assignedBatchIds } = parsed.data;
+
+  // Closes the other route to the super role: provisioning a brand-new
+  // account straight into Founder would sidestep the setUserRole guard
+  // entirely.
+  if (!canAssignRole(session.role, role)) {
+    return permissionError('Only a Founder can create a Founder account.');
+  }
 
   const auth = adminAuth();
   const db = adminDb();

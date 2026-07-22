@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { PageHeader } from '@/components/layout/page-header';
 import { listAllocatableBatches } from '@/features/batches';
+import { listCommunicationsFor } from '@/features/communications';
 import {
   ParticipantProfile,
   getParticipant,
@@ -28,11 +29,13 @@ export default async function ParticipantDetailPage({
   if (!participant) notFound();
 
   const canAllocate = can(session.role, 'batches:assign');
-  const [enrolments, documents, timeline, allocatableBatches] = await Promise.all([
+  const canViewComms = can(session.role, 'communications:view');
+  const [enrolments, documents, timeline, allocatableBatches, communications] = await Promise.all([
     listEnrolments(participant.id),
     listDocuments(participant.id),
     listTimeline(participant.id),
     canAllocate ? listAllocatableBatches() : Promise.resolve([]),
+    canViewComms ? listCommunicationsFor('participant', participant.id) : Promise.resolve(null),
   ]);
 
   return (
@@ -45,6 +48,7 @@ export default async function ParticipantDetailPage({
         participant={participant}
         enrolments={enrolments}
         documents={documents}
+        communications={communications}
         timeline={timeline}
         canUpdate={can(session.role, 'participants:update')}
         canAllocate={canAllocate}

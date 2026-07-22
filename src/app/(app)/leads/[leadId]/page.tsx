@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { PageHeader } from '@/components/layout/page-header';
+import { listCommunicationsFor } from '@/features/communications';
 import { LeadDetailView, getLead, listConsultants, listLeadActivities } from '@/features/leads';
 import { can } from '@/lib/rbac/permissions';
 import { requirePermission } from '@/lib/rbac/require';
@@ -17,9 +18,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
 
   const canUpdate = can(session.role, 'leads:update');
   const canAssign = can(session.role, 'leads:assign');
-  const [activities, consultants] = await Promise.all([
+  const canViewComms = can(session.role, 'communications:view');
+  const [activities, consultants, communications] = await Promise.all([
     listLeadActivities(leadId),
     canAssign ? listConsultants() : Promise.resolve([]),
+    canViewComms ? listCommunicationsFor('lead', leadId) : Promise.resolve(null),
   ]);
 
   return (
@@ -28,6 +31,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
       <LeadDetailView
         lead={lead}
         activities={activities}
+        communications={communications}
         consultants={consultants}
         canUpdate={canUpdate}
         canAssign={canAssign}

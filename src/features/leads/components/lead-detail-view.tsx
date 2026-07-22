@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { RecordCommunications } from '@/features/communications/components/record-communications';
+import type { Communication } from '@/features/communications/schema';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,12 +47,15 @@ interface ActivityFormValues {
 export function LeadDetailView({
   lead,
   activities,
+  communications,
   consultants,
   canUpdate,
   canAssign,
 }: {
   lead: Lead;
   activities: LeadActivity[];
+  /** `null` when the viewer lacks `communications:view` — the card is then hidden. */
+  communications: Communication[] | null;
   consultants: Array<{ uid: string; displayName: string }>;
   canUpdate: boolean;
   canAssign: boolean;
@@ -205,6 +210,17 @@ export function LeadDetailView({
             )}
           </CardContent>
         </Card>
+
+        {communications ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Messages</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RecordCommunications rows={communications} />
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
 
       <div className="space-y-6">

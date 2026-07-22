@@ -18,6 +18,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import type { Batch } from '@/features/batches/schema';
+import { RecordCommunications } from '@/features/communications/components/record-communications';
+import type { Communication } from '@/features/communications/schema';
 
 import { setParticipantStatus } from '../actions/set-participant-status';
 import { isManuallyAssignableStatus, requiresStatusReason } from '../logic';
@@ -37,7 +39,7 @@ import { ParticipantTimeline } from './participant-timeline';
 
 /**
  * S21 — the lifetime record (Doc 16). Tabs ship as their modules land;
- * Overview / Enrolments / Documents / Timeline are live now, with
+ * Overview / Enrolments / Documents / Comms / Timeline are live now, with
  * Attendance / Assessments / Certificates / Career / Fees joining later
  * without restructuring this shell.
  */
@@ -45,6 +47,7 @@ export function ParticipantProfile({
   participant,
   enrolments,
   documents,
+  communications,
   timeline,
   canUpdate,
   canAllocate,
@@ -53,6 +56,8 @@ export function ParticipantProfile({
   participant: Participant;
   enrolments: Enrolment[];
   documents: ParticipantDocument[];
+  /** `null` when the viewer lacks `communications:view` — the tab is then hidden entirely. */
+  communications: Communication[] | null;
   timeline: TimelineEntry[];
   canUpdate: boolean;
   canAllocate: boolean;
@@ -127,6 +132,7 @@ export function ParticipantProfile({
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="enrolments">Enrolments</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
+          {communications ? <TabsTrigger value="comms">Comms</TabsTrigger> : null}
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
         </TabsList>
 
@@ -150,6 +156,11 @@ export function ParticipantProfile({
             canUpload={canUpdate}
           />
         </TabsContent>
+        {communications ? (
+          <TabsContent value="comms">
+            <RecordCommunications rows={communications} />
+          </TabsContent>
+        ) : null}
         <TabsContent value="timeline">
           <ParticipantTimeline
             participantId={participant.id}

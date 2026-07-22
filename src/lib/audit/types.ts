@@ -44,6 +44,7 @@ export type AuditEntityType =
   | 'payment'
   | 'communication'
   | 'college'
+  | 'report'
   | 'settings';
 
 export interface AuditChange {

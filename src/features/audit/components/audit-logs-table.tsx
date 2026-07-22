@@ -7,8 +7,40 @@ import { StatusBadge, type StatusKind } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import type { AuditAction } from '@/lib/audit/types';
 
+import { csvFilename, toCsv, type CsvValue } from '@/lib/utils/csv';
+
 import type { AuditLogEntry, AuditLogFilters } from '../schema';
 import { AuditFilterBar } from './audit-filter-bar';
+
+const AUDIT_EXPORT_COLUMNS = [
+  { key: 'at', label: 'At' },
+  { key: 'actorUid', label: 'Actor UID' },
+  { key: 'actorRole', label: 'Actor role' },
+  { key: 'action', label: 'Action' },
+  { key: 'entityType', label: 'Entity type' },
+  { key: 'entityId', label: 'Entity ID' },
+  { key: 'entityPath', label: 'Entity path' },
+  { key: 'feature', label: 'Feature' },
+  { key: 'reason', label: 'Reason' },
+  { key: 'changes', label: 'Changes' },
+] as const;
+
+function toExportRow(entry: AuditLogEntry): Record<string, CsvValue> {
+  return {
+    at: entry.at,
+    actorUid: entry.actorUid,
+    actorRole: entry.actorRole,
+    action: entry.action,
+    entityType: entry.entityType,
+    entityId: entry.entityId,
+    entityPath: entry.entityPath,
+    feature: entry.context.feature,
+    reason: entry.context.reason,
+    // Flattened rather than dropped: the before/after pair is usually the
+    // reason someone is exporting the register in the first place.
+    changes: entry.changes ? JSON.stringify(entry.changes) : '',
+  };
+}
 
 const ACTION_KIND: Record<AuditAction, StatusKind> = {
   create: 'success',
@@ -54,6 +86,23 @@ export function AuditLogsTable({
   const [filters, setFilters] = useState<AuditLogFilters>(initialFilters);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Exports what the analyst is currently looking at, filters and all —
+   * exporting the unfiltered stream instead would be a different document
+   * from the one on screen. The read that produced these rows was already
+   * audited server-side by `fetchAuditLogs`.
+   */
+  const handleExport = useCallback(() => {
+    const csv = toCsv(AUDIT_EXPORT_COLUMNS, entries.map(toExportRow));
+    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = csvFilename('audit-logs');
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [entries]);
+
   const handleFiltersChange = useCallback(
     async (newFilters: AuditLogFilters) => {
       setFilters(newFilters);
@@ -75,11 +124,9 @@ export function AuditLogsTable({
         {canExport && (
           <button
             id="audit-export-btn"
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground"
-            onClick={() => {
-              // Export handled by server action — placeholder until M8 report centre
-              alert('Export will be available in M8 reports. Audit entry is recorded regardless.');
-            }}
+            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-50"
+            disabled={entries.length === 0}
+            onClick={handleExport}
           >
             Export CSV
           </button>

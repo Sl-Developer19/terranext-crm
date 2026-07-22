@@ -33,6 +33,7 @@ const ENTITY_TYPES = [
   'payment',
   'communication',
   'college',
+  'report',
   'settings',
 ] as const;
 

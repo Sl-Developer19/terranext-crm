@@ -494,6 +494,20 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── colleges/* + campusLeaders/* (Doc 14 §10, S15) ──────────────────────
+    // Read: any role with `colleges:view`. Write: Admin SDK only — name
+    //   uniqueness and audit logging live in the server action, and a client
+    //   write path would bypass both.
+    match /colleges/{collegeId} {
+      allow read: if can_colleges_view();
+      allow write: if false; // Admin SDK only
+
+      match /campusLeaders/{leaderId} {
+        allow read: if can_colleges_view();
+        allow write: if false; // Admin SDK only
+      }
+    }
+
     // ── counsellingSessions/* (Doc 03 §1.3, Doc 14 §9, BR-02, S12) ──────────
     // Read: any role with `counselling:view`. Write: Admin SDK only — this
     //   collection is the evidence BR-02 gates admissions on, and the shape

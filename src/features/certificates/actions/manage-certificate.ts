@@ -1,5 +1,6 @@
 'use server';
 
+import { enqueueTemplatedMessage } from '@/features/communications/enqueue';
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
 import { can } from '@/lib/rbac/permissions';
@@ -133,6 +134,16 @@ export async function issueCertificateAction(
         context: { feature: 'certificates', reason: `BR-05:${outcome.certificateId}` },
       });
     }
+
+    // Doc 19 §3 `onCertificateIssued`: notify the participant. Idempotent by
+    // ref+template, and swallowed on failure — the certificate is issued
+    // either way, and a notification problem must not undo that fact.
+    await enqueueTemplatedMessage({
+      templateKey: 'participant.certificate_issued',
+      refType: 'participant',
+      refId: participantId,
+      branchId: session.branchId,
+    }).catch(() => undefined);
 
     return ok({ certificateId: outcome.certificateId });
   } catch {

@@ -19,7 +19,8 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "generate:rules": "tsx scripts/generate-firestore-predicates.mts",
-    "check:rules-drift": "tsx scripts/check-rules-drift.mts"
+    "check:rules-drift": "tsx scripts/check-rules-drift.mts",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\""
   },
   "lint-staged": {
     "*.{ts,tsx}": [
@@ -66,6 +67,7 @@
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",
     "@commitlint/config-conventional": "^19.6.0",
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@next/bundle-analyzer": "15.1.12",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",

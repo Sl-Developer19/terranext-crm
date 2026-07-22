@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { enqueueTemplatedMessage } from '@/features/communications/enqueue';
 import { writeAudit } from '@/lib/audit/write';
 import { adminDb } from '@/lib/firebase/admin';
 import { consumeRateLimit, DAY_MS, HOUR_MS } from '@/lib/rate-limit/fixed-window';
@@ -149,6 +150,18 @@ export async function createPublicLead(
       changes: { source: { before: null, after: 'website' } },
       context: { feature: 'leads', reason: `website:${input.formType}` },
     });
+
+    // BR-07: auto-acknowledgement to the registrant, logged like any other
+    // message. Deliberately after the lead is committed — an acknowledgement
+    // that fails must never cost us the enquiry itself.
+    if (input.email) {
+      await enqueueTemplatedMessage({
+        templateKey: 'lead.enquiry_acknowledgement',
+        refType: 'lead',
+        refId: ref.id,
+        branchId: 'main',
+      }).catch(() => undefined);
+    }
 
     return ok({ leadId: ref.id, dedup: false });
   } catch {

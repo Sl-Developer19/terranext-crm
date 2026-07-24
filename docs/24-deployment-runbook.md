@@ -121,7 +121,7 @@ These cannot be done from application code. Each is required once per project.
 
 ## 3a. Founder Bootstrap (once, before first sign-in)
 
-Founder is the super administrator, and **only an existing Founder may assign the Founder role** — in-app and in `provisionUser` alike. The first one therefore cannot be created from inside the application; this script is the single deliberate exception, authorised by possession of the service-account key.
+Founder is the super administrator. **Only an existing Founder or an existing System Administrator may assign the Founder role** (policy revised 2026-07-24) — in-app and in `provisionUser` alike; every other role is refused. The very first Founder still cannot come from inside the application, since bootstrap time has neither — this script is the single deliberate exception, authorised by possession of the service-account key.
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
@@ -136,12 +136,12 @@ It creates the account **without a password** and prints a one-hour reset link �
 
 ### Transferring ownership
 
-Two audited steps, both performed by the outgoing Founder:
+Two audited steps. Neither can be self-performed — no one, Founder included, can change their own role (`isSelfTargeting` blocks it unconditionally, regardless of this policy change), so a transfer always takes two distinct people:
 
-1. Promote the successor to Founder (Admin → Users).
-2. Demote yourself to another role.
+1. Someone promotes the successor to Founder (Admin → Users) — the outgoing Founder or a System Administrator may do this (`canAssignRole`).
+2. Someone else demotes the outgoing Founder to another role — the new Founder, another existing Founder, or a System Administrator.
 
-Order matters. The last-holder guard blocks step 2 until a second Founder exists, which is the point — there is no window where the platform has no Founder.
+Order matters. The last-holder guard blocks step 2 until a second Founder exists, which is the point — there is no window where the platform has no Founder. `canAssignRole` governs who may *grant* Founder; who may *remove* it is governed separately by the last-holder guard (`wouldStrandPlatform` / `leavesProtectedRole`), which this policy change does not touch.
 
 ---
 
@@ -269,6 +269,8 @@ Untested backups are not backups. Run once per quarter: restore the most recent 
 
 **Status: PASSED.** Run 2026-07-24, against the deployed `firestore.rules` artefact (not a restatement of the policy — the actual rules file the emulator loads and Firestore will enforce in production).
 
+> **Amendment (2026-07-24, later same day):** the *application-layer* policy for who may assign Founder was revised after this run — System Administrator is now a second permitted grantor alongside Founder (`FOUNDER_ASSIGNERS` in `features/users/logic.ts`). The report below is unchanged and still accurate for what it actually tests: `firestore.rules` denies every client write to `users/*` for every role, which this policy change does not touch and does not need to touch — the assignment guard lives in the server actions, not in rules. Row 5's "System Administrator cannot write" refers specifically to the *direct Firestore write* path, which stays refused; it is no longer true that System Administrator cannot *assign* Founder — see `features/users/logic.test.ts` for that, now-updated, coverage.
+
 **JDK:** 21+ was already satisfied — Temurin JDK 25.0.1 LTS was present on the machine (alongside an older 17), just not the one on `PATH`. No install was required; the emulator was run with `JAVA_HOME` pointed at the 25 install. If your machine has no JDK 21+ at all, install Temurin 21 LTS or newer before running `npm run test:rules`.
 
 ```
@@ -285,7 +287,7 @@ Test Files  1 passed (1)
 |---|---|---|
 | 4 | Founder authorization — reads every collection (business data, `auditLogs`, `settings`, `users`) | ✅ `lets Founder read every collection (super administrator)` |
 | 4 | Founder — still refused a direct client write to any collection | ✅ `still refuses Founder a direct client write` |
-| 5 | System Administrator cannot write `role: founder` to any user doc | ✅ `refuses a System Administrator writing role: founder to any user doc` |
+| 5 | System Administrator cannot write `role: founder` **directly to Firestore** — a client transport check, distinct from the (now-permitted) application-layer *assignment* right | ✅ `refuses a System Administrator writing role: founder to any user doc` |
 | 5 | No ordinary role (ops_manager, trainer, …) can write `role: founder` | ✅ `refuses an ordinary role writing role: founder to any user doc` |
 | 6 | `users/*` denies client writes for every role, including Founder itself | ✅ `refuses even an authenticated Founder session — the write path itself does not exist` |
 | 6 | An existing user doc cannot be merge-edited to add `role: founder` | ✅ `refuses editing an existing user document to add role: founder` |
@@ -331,7 +333,7 @@ Nothing here is optional. `[ ]` means unverified.
 ### Post-deployment verification
 - [ ] Founder bootstrapped (§3a); password set via the reset link
 - [ ] Re-running the bootstrap script is **refused** (proves the backdoor is closed)
-- [ ] A System Administrator cannot assign the Founder role in Admin → Users
+- [ ] A Founder or System Administrator CAN assign the Founder role in Admin → Users; an ordinary role (e.g. ops_manager) CANNOT
 - [ ] Sign in as each of the 8 roles; confirm the nav matches the permission map
 - [ ] A role without a grant is redirected from that module's URL
 - [ ] Submit the website enquiry form → lead appears with `source: website`, `stage: new`

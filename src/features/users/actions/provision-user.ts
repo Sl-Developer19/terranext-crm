@@ -54,7 +54,7 @@ export async function provisionUser(
   // account straight into Founder would sidestep the setUserRole guard
   // entirely.
   if (!canAssignRole(session.role, role)) {
-    return permissionError('Only a Founder can create a Founder account.');
+    return permissionError('Only a Founder or System Administrator can create a Founder account.');
   }
 
   const auth = adminAuth();

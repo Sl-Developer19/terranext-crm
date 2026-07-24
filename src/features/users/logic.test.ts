@@ -72,21 +72,29 @@ describe('leavesProtectedRole', () => {
   });
 });
 
-describe('canAssignRole — only a Founder may hand out Founder', () => {
-  const ORDINARY = STAFF_ROLES.filter((role) => role !== 'founder');
+describe('canAssignRole — Founder or System Administrator may hand out Founder', () => {
+  // Policy revised 2026-07-24 (owner decision): system_admin joins founder as
+  // a trusted grantor. Everyone else stays refused.
+  const OTHER_ROLES = STAFF_ROLES.filter((role) => role !== 'founder' && role !== 'system_admin');
 
-  it('lets a Founder assign Founder', () => {
+  it('✅ lets a Founder assign Founder', () => {
     expect(canAssignRole('founder', 'founder')).toBe(true);
   });
 
-  it('refuses a System Administrator assigning Founder', () => {
-    // system_admin holds users:create and users:update, so without this guard
-    // it could promote an accomplice and inherit unrestricted access.
-    expect(canAssignRole('system_admin', 'founder')).toBe(false);
+  it('✅ lets a System Administrator assign Founder', () => {
+    expect(canAssignRole('system_admin', 'founder')).toBe(true);
   });
 
-  it('refuses every non-Founder role assigning Founder', () => {
-    for (const role of ORDINARY) {
+  it('❌ refuses an ordinary administrator role (ops_manager) assigning Founder', () => {
+    // "Administrator" in the requirements has no dedicated role in this
+    // system — STAFF_ROLES has no entry named that — so ops_manager stands
+    // in as the ordinary day-to-day administrator role. It has never been
+    // able to mint Founders and this policy change does not touch that.
+    expect(canAssignRole('ops_manager', 'founder')).toBe(false);
+  });
+
+  it('❌ refuses every other role assigning Founder', () => {
+    for (const role of OTHER_ROLES) {
       expect(canAssignRole(role, 'founder'), role).toBe(false);
     }
   });
@@ -100,19 +108,30 @@ describe('canAssignRole — only a Founder may hand out Founder', () => {
     expect(wouldStrandPlatform(1)).toBe(false);
   });
 
+  it('supports System Administrator provisioning a Founder the same way', () => {
+    expect(canAssignRole('system_admin', 'founder')).toBe(true);
+  });
+
   it('does not restrict assigning ordinary roles', () => {
     // The guard is narrow on purpose: it protects the super role only, and
-    // must not turn system_admin into a role that cannot manage staff.
-    for (const target of ORDINARY) {
+    // must not turn system_admin or founder into roles that cannot manage
+    // ordinary staff.
+    const ordinaryTargets = STAFF_ROLES.filter((role) => role !== 'founder');
+    for (const target of ordinaryTargets) {
       expect(canAssignRole('system_admin', target), target).toBe(true);
+      expect(canAssignRole('founder', target), target).toBe(true);
       expect(canAssignRole('ops_manager', target), target).toBe(true);
     }
   });
 
-  it('is independent of who holds users:update', () => {
-    // Authority to manage users is not authority to mint super-admins.
+  it('is independent of who holds users:update — grant list is explicit, not implied', () => {
+    // Every non-founder, non-system_admin role in this map holds no
+    // users:update grant at all, so the interesting case is system_admin:
+    // it holds users:update AND is now on the Founder-assigner list, but
+    // for an explicit reason (FOUNDER_ASSIGNERS), not because the permission
+    // implies it.
     expect(can('system_admin', 'users:update')).toBe(true);
-    expect(canAssignRole('system_admin', 'founder')).toBe(false);
+    expect(canAssignRole('system_admin', 'founder')).toBe(true);
   });
 });
 

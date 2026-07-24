@@ -54,7 +54,7 @@ export async function setUserRole(input: SetUserRoleInput): Promise<Result<{ ok:
   // Checked before any read so the refusal costs nothing and reveals nothing
   // about whether the target account exists.
   if (!canAssignRole(session.role, role)) {
-    return permissionError('Only a Founder can assign the Founder role.');
+    return permissionError('Only a Founder or System Administrator can assign the Founder role.');
   }
 
   const db = adminDb();

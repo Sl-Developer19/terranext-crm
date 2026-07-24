@@ -230,12 +230,16 @@ describe('read scoping follows the permission map', () => {
 
 describe('Founder assignment cannot be forced through the rules layer', () => {
   // canAssignRole (features/users/logic.ts) is the application-layer guard:
-  // only a Founder may hand out the Founder role. This block proves the
-  // structural backstop underneath it — `users/*` has no client write path at
-  // all, for any role, for any field. Even a system_admin or a compromised
-  // Founder session cannot set `role: 'founder'` by writing directly to
-  // Firestore; every role change is Admin-SDK only, through setUserRole /
-  // provisionUser, which is where canAssignRole actually runs.
+  // founder or system_admin may hand out the Founder role (policy revised
+  // 2026-07-24), every other role is refused. This block proves the
+  // structural backstop UNDERNEATH that policy and is deliberately
+  // independent of it — `users/*` has no client write path at all, for any
+  // role, for any field, regardless of who canAssignRole permits. Even a
+  // system_admin legitimately entitled to grant Founder cannot do it by
+  // writing directly to Firestore; every role change is Admin-SDK only,
+  // through setUserRole / provisionUser, which is where canAssignRole
+  // actually runs. A future change to who may assign Founder must never
+  // require a change here.
   const attemptSelfPromotion = (role: 'system_admin' | 'founder' | 'ops_manager' | 'trainer') =>
     setDoc(doc(authed(env, 'attacker', role), 'users/attacker'), {
       displayName: 'Attacker',

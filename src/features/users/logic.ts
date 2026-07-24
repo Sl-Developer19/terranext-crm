@@ -47,19 +47,38 @@ export function leavesProtectedRole(before: StaffRole, after: StaffRole): boolea
 }
 
 /**
- * Only a Founder may hand out the Founder role.
+ * Roles allowed to hand out the Founder role (policy revised 2026-07-24 —
+ * owner decision; originally Founder-only).
  *
- * Without this, the super role is reachable by privilege escalation:
- * `system_admin` holds `users:create` and `users:update`, so it could simply
- * promote itself an accomplice — or a fresh account it controls — to Founder
- * and inherit unrestricted access. Guarding the *grant* is what makes Founder
- * genuinely held rather than merely configured.
+ * This is a separate axis from `can()`: the actor may hold `users:update` and
+ * still be refused this particular assignment for a role outside this list —
+ * a permission to manage users is not, on its own, a permission to mint
+ * super-administrators. `system_admin` is on the list by explicit request,
+ * not because `users:update` implies it.
  *
- * This is a separate axis from `can()`. The actor may hold `users:update` and
- * still be refused this particular assignment; a permission to manage users is
- * not a permission to mint super-administrators.
+ * Trade-off worth naming, because it is a real consequence of this policy and
+ * not a bug: `system_admin` can now reach Founder in two hops even though
+ * `isSelfTargeting` still blocks a direct self-promotion — provision or
+ * promote a second account to Founder, then have *that* account promote the
+ * original system_admin. Both hops are `canAssignRole`-legal individually,
+ * both are audited (`writeAudit` on every grant), and the last-Founder guard
+ * never blocks a *grant* — only a demotion of the last holder — so nothing
+ * here stops the sequence. Accepted deliberately: the owner asked for
+ * System Administrator to be a second trusted path to Founder, not merely a
+ * checkbox that happens to be unreachable in practice.
+ */
+export const FOUNDER_ASSIGNERS = [
+  SUPER_ROLE,
+  'system_admin',
+] as const satisfies readonly StaffRole[];
+
+/**
+ * Guards the Founder grant specifically — everything else passes through.
+ * See `FOUNDER_ASSIGNERS` for who may assign Founder and why.
  */
 export function canAssignRole(actorRole: StaffRole, targetRole: StaffRole): boolean {
-  if (targetRole === SUPER_ROLE) return actorRole === SUPER_ROLE;
+  if (targetRole === SUPER_ROLE) {
+    return (FOUNDER_ASSIGNERS as readonly StaffRole[]).includes(actorRole);
+  }
   return true;
 }

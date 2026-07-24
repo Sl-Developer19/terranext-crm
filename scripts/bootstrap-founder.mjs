@@ -1,9 +1,11 @@
 /**
  * One-time bootstrap: provision the FIRST Founder account.
  *
- * Founder is the super administrator, and only an existing Founder may assign
- * the role in-app. That rule is what makes the seat genuinely held rather than
- * merely configured — but it also means the first one cannot be created from
+ * Founder is the super administrator. In-app, only an existing Founder or an
+ * existing System Administrator may assign the role (policy revised
+ * 2026-07-24) — every other role is refused, and that guard is what makes the
+ * seat genuinely held rather than merely configured. But at bootstrap time
+ * neither exists yet, so the very first Founder still cannot be created from
  * inside the application at all. This script is that single, deliberate
  * exception, and it is why it runs off a service-account key rather than a
  * session: possession of the key IS the authorisation.
@@ -12,8 +14,8 @@
  * Without that check this script would be a permanent privilege-escalation
  * backdoor — anyone who ever obtained the key could mint themselves a second
  * super administrator. Once the first Founder exists, every further grant or
- * transfer goes through the audited in-app flow, where an existing Founder
- * must authorise it.
+ * transfer goes through the audited in-app flow, where an existing Founder or
+ * System Administrator must authorise it.
  *
  * Usage (PowerShell, from crm/):
  *   $env:GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\service-account.json"
@@ -72,7 +74,7 @@ if (!existing.empty && !force) {
     console.error(`  · ${doc.get('email')} (${doc.get('status')})`);
   }
   console.error(
-    '\nFounder is assignable in-app by an existing Founder — use Admin → Users.\n' +
+    '\nFounder is assignable in-app by an existing Founder or System Administrator — use Admin → Users.\n' +
       'Only if every Founder is genuinely unrecoverable, re-run with --force.\n' +
       'That is an audited emergency action.\n',
   );
@@ -144,4 +146,6 @@ console.log('\nFounder bootstrap complete.');
 console.log('Open this link in your browser to set your password (expires in 1 hour):\n');
 console.log(resetLink);
 console.log('\nThen sign in at the CRM /login page.');
-console.log('\nEvery further Founder grant or transfer happens in-app, authorised by a Founder.');
+console.log(
+  '\nEvery further Founder grant or transfer happens in-app, authorised by a Founder or System Administrator.',
+);

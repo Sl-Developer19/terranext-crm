@@ -265,13 +265,58 @@ Untested backups are not backups. Run once per quarter: restore the most recent 
 
 ---
 
+## 6a. Firestore Rules Emulator — Verification Report
+
+**Status: PASSED.** Run 2026-07-24, against the deployed `firestore.rules` artefact (not a restatement of the policy — the actual rules file the emulator loads and Firestore will enforce in production).
+
+**JDK:** 21+ was already satisfied — Temurin JDK 25.0.1 LTS was present on the machine (alongside an older 17), just not the one on `PATH`. No install was required; the emulator was run with `JAVA_HOME` pointed at the 25 install. If your machine has no JDK 21+ at all, install Temurin 21 LTS or newer before running `npm run test:rules`.
+
+```
+npm run test:rules
+
+Test Files  1 passed (1)
+     Tests  28 passed (28)
+  Duration  ~8–20s (emulator start dominates; assertions run in under 2s)
+```
+
+### Coverage against the required scenarios
+
+| # | Scenario | Result |
+|---|---|---|
+| 4 | Founder authorization — reads every collection (business data, `auditLogs`, `settings`, `users`) | ✅ `lets Founder read every collection (super administrator)` |
+| 4 | Founder — still refused a direct client write to any collection | ✅ `still refuses Founder a direct client write` |
+| 5 | System Administrator cannot write `role: founder` to any user doc | ✅ `refuses a System Administrator writing role: founder to any user doc` |
+| 5 | No ordinary role (ops_manager, trainer, …) can write `role: founder` | ✅ `refuses an ordinary role writing role: founder to any user doc` |
+| 6 | `users/*` denies client writes for every role, including Founder itself | ✅ `refuses even an authenticated Founder session — the write path itself does not exist` |
+| 6 | An existing user doc cannot be merge-edited to add `role: founder` | ✅ `refuses editing an existing user document to add role: founder` |
+| 7 | Founder access is structural, not a rules carve-out — every mutation path (`setUserRole`, `provisionUser`, all feature actions) uses `adminDb()`/`adminAuth()`, which bypass rules by design; rules deny every client write regardless of role | ✅ Proven by the full "business collections are read-only to clients" block (founder included) + code inspection of the Admin SDK usage in every action |
+
+### Also covered (full suite, not just the items above)
+
+- Anonymous access denied everywhere (read and write)
+- Server-only ledgers (`loginSecurity`, `loginAttempts`, `securityEvents`, `rateLimits`, `counters`) unreadable by any role, including Founder
+- Audit log immutability — readable only by founder/system_admin, never updatable or deletable by anyone (ADR-007)
+- Row-level scoping: a consultant reads only their own assigned leads, not the whole collection, while founder/ops_manager read every lead — this caught and fixed a test-fixture gap (a seed doc missing `assignedToUid` produced a rules evaluation error rather than a clean allow/deny, which is itself a useful reminder that Firestore rules error on missing-field access rather than treating it as falsy)
+- Read scoping matches `permissions.ts` exactly for both grants and denials
+- Unknown/missing role claims fail closed rather than defaulting open
+
+### What this does — and does not — prove
+
+Proves: the deployed rules artefact enforces the Founder-assignment guarantees at the transport layer, independent of and in addition to the `canAssignRole` application-layer guard verified in `src/features/users/logic.test.ts`. Two independent layers agree.
+
+Does not prove: production IAM/service-account configuration, or that the deployed rules in the live project match the local file (run `check:rules-drift` and `firebase deploy --only firestore:rules` as normal — this suite is a pre-deploy gate, not a post-deploy check).
+
+**Authorization model status: production-ready per this gate.**
+
+---
+
 ## 7. Go-Live Checklist
 
 Nothing here is optional. `[ ]` means unverified.
 
 ### Pre-deployment
 - [ ] `npm run typecheck` · `lint` · `test` · `build` · `check:rules-drift` all pass
-- [ ] `npm run test:rules` passes (**requires JDK 21+**)
+- [x] `npm run test:rules` passes (**requires JDK 21+**) — 28/28, see §6a. Re-run after any further `firestore.rules` edit
 - [ ] All §1 environment variables set on the production backend
 - [ ] `JOBS_SECRET` generated and stored in a password manager
 - [ ] Messaging provider credentials verified with a real test send

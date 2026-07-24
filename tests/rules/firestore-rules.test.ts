@@ -37,7 +37,20 @@ beforeEach(async () => {
   // may do, and every document here was written by the Admin SDK in reality.
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, 'leads/lead1'), { name: 'Asha', phone: '+919876543210' });
+    // assignedToUid matters: leads/* enforces row-level scoping for
+    // consultants (Doc 10 §2), and Firestore rules throw an evaluation
+    // error — not a clean `false` — on a field access against a doc that
+    // lacks the field entirely. The seed has to look like a real lead.
+    await setDoc(doc(db, 'leads/lead1'), {
+      name: 'Asha',
+      phone: '+919876543210',
+      assignedToUid: 'consultant1',
+    });
+    await setDoc(doc(db, 'leads/lead2'), {
+      name: 'Ravi',
+      phone: '+919876543211',
+      assignedToUid: 'consultant2',
+    });
     await setDoc(doc(db, 'participants/TNX-2026-00001'), {
       personal: { fullName: 'Asha Menon' },
     });
@@ -144,12 +157,28 @@ describe('business collections are read-only to clients', () => {
 
 describe('read scoping follows the permission map', () => {
   it('lets roles with the view grant read their module', async () => {
-    await assertSucceeds(getDoc(doc(authed(env, 'u1', 'consultant'), 'leads/lead1')));
+    await assertSucceeds(getDoc(doc(authed(env, 'consultant1', 'consultant'), 'leads/lead1')));
     await assertSucceeds(getDoc(doc(authed(env, 'u1', 'ops_manager'), 'counsellingSessions/s1')));
     await assertSucceeds(getDoc(doc(authed(env, 'u1', 'finance'), 'feeAccounts/enr1')));
     await assertSucceeds(
       getDoc(doc(authed(env, 'u1', 'placement'), 'participants/TNX-2026-00001')),
     );
+  });
+
+  it('scopes a consultant to their own assigned leads, not every lead (Doc 10 §2)', async () => {
+    const consultant1 = authed(env, 'consultant1', 'consultant');
+    // Their own assignment: readable.
+    await assertSucceeds(getDoc(doc(consultant1, 'leads/lead1')));
+    // Someone else's assignment: denied, even though the module grant is the same.
+    await assertFails(getDoc(doc(consultant1, 'leads/lead2')));
+  });
+
+  it('lets founder and ops_manager read every lead regardless of assignment', async () => {
+    for (const role of ['founder', 'ops_manager'] as const) {
+      const db = authed(env, 'someone-unassigned', role);
+      await assertSucceeds(getDoc(doc(db, 'leads/lead1')));
+      await assertSucceeds(getDoc(doc(db, 'leads/lead2')));
+    }
   });
 
   it('denies modules a role has no grant for', async () => {
@@ -196,6 +225,43 @@ describe('read scoping follows the permission map', () => {
     await assertFails(setDoc(doc(db, 'leads/lead1'), { tampered: true }));
     await assertFails(setDoc(doc(db, 'auditLogs/a1'), { action: 'tampered' }));
     await assertFails(setDoc(doc(db, 'counters/participantId'), { current: 9999 }));
+  });
+});
+
+describe('Founder assignment cannot be forced through the rules layer', () => {
+  // canAssignRole (features/users/logic.ts) is the application-layer guard:
+  // only a Founder may hand out the Founder role. This block proves the
+  // structural backstop underneath it — `users/*` has no client write path at
+  // all, for any role, for any field. Even a system_admin or a compromised
+  // Founder session cannot set `role: 'founder'` by writing directly to
+  // Firestore; every role change is Admin-SDK only, through setUserRole /
+  // provisionUser, which is where canAssignRole actually runs.
+  const attemptSelfPromotion = (role: 'system_admin' | 'founder' | 'ops_manager' | 'trainer') =>
+    setDoc(doc(authed(env, 'attacker', role), 'users/attacker'), {
+      displayName: 'Attacker',
+      role: 'founder',
+      status: 'active',
+    });
+
+  it('refuses a System Administrator writing role: founder to any user doc', async () => {
+    await assertFails(attemptSelfPromotion('system_admin'));
+  });
+
+  it('refuses an ordinary role writing role: founder to any user doc', async () => {
+    await assertFails(attemptSelfPromotion('ops_manager'));
+    await assertFails(attemptSelfPromotion('trainer'));
+  });
+
+  it('refuses even an authenticated Founder session — the write path itself does not exist', async () => {
+    // Founder's unrestricted *authorization* does not create a client
+    // *transport* path. It still promotes people through the audited
+    // server action (Doc 24 §3a), never a direct document write.
+    await assertFails(attemptSelfPromotion('founder'));
+  });
+
+  it('refuses editing an existing user document to add role: founder', async () => {
+    const db = authed(env, 'u1', 'system_admin');
+    await assertFails(setDoc(doc(db, 'users/u1'), { role: 'founder' }, { merge: true }));
   });
 });
 

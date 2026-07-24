@@ -45,9 +45,12 @@ export const config = {
   // Protect everything except Next internals, static assets, and the
   // deliberately public endpoints: login (authenticates by password +
   // lockout policy), session DELETE (clears its own cookie), error reports
-  // (must work before/without a session), and certificate verification
-  // (an employer checking a certificate has no CRM account — Doc 19 §1).
+  // (must work before/without a session), certificate verification
+  // (an employer checking a certificate has no CRM account — Doc 19 §1),
+  // and website lead intake (a visitor on the marketing site has no session
+  // either — createLead defends itself with an origin allow-list, honeypot
+  // and rate limits instead, Doc 20 §2).
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/session|api/auth|api/errors|api/certificates/verify|.*\\.(?:svg|png|jpg|ico)).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/session|api/auth|api/errors|api/certificates/verify|api/createLead|.*\\.(?:svg|png|jpg|ico)).*)',
   ],
 };

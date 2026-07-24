@@ -38,11 +38,15 @@ export function Pagination({
   const last = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4">
       <p className="text-xs text-muted-foreground">
-        Showing {first}–{last} of {total}
+        Showing{' '}
+        <span className="font-mono font-medium text-foreground">
+          {first}–{last}
+        </span>{' '}
+        of <span className="font-mono font-medium text-foreground">{total}</span>
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <Button
           variant="outline"
           size="sm"
@@ -53,7 +57,7 @@ export function Pagination({
           <ChevronLeft aria-hidden />
           Previous
         </Button>
-        <span className="text-xs text-muted-foreground">
+        <span className="font-mono text-xs text-muted-foreground">
           Page {page} of {totalPages}
         </span>
         <Button

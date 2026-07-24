@@ -1,7 +1,8 @@
 import type * as React from 'react';
 
-import type { Session } from '@/lib/auth/session';
+import { Logo } from '@/components/ui/logo';
 import { siteConfig } from '@/config/site';
+import type { Session } from '@/lib/auth/session';
 
 import { Sidebar } from './sidebar';
 import { Topbar } from './topbar';
@@ -26,13 +27,24 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-60 shrink-0 border-r bg-background md:block">
-        <div className="flex h-14 items-center border-b px-4">
-          <span className="font-mono text-xs font-semibold uppercase tracking-widest text-primary">
-            {siteConfig.name}
-          </span>
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface md:flex">
+        <div className="flex h-14 shrink-0 items-center border-b border-border px-4">
+          <Logo size="sm" />
         </div>
-        <Sidebar role={session.role} />
+        <div className="min-h-0 flex-1">
+          <Sidebar role={session.role} />
+        </div>
+        <div className="shrink-0 border-t border-border p-3">
+          <div className="card-sheen flex items-center gap-2.5 rounded-lg border border-gold/15 bg-gradient-to-br from-gold/[0.06] to-emerald/[0.06] px-3 py-2.5">
+            <Logo size="sm" wordmark={false} />
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-xs font-medium text-foreground">{siteConfig.name}</p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                TerraNext Global Ventures
+              </p>
+            </div>
+          </div>
+        </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar session={session} actions={headerActions} />

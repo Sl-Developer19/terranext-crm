@@ -26,11 +26,11 @@ export function Sidebar({ role }: { role: StaffRole }) {
   })).filter((group) => group.items.length > 0);
 
   return (
-    <nav aria-label="Primary" className="flex h-full flex-col gap-4 overflow-y-auto px-3 py-4">
+    <nav aria-label="Primary" className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-4">
       {groups.map((group, i) => (
         <div key={group.label || i}>
           {group.label ? (
-            <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            <p className="px-2.5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               {group.label}
             </p>
           ) : null}
@@ -44,13 +44,26 @@ export function Sidebar({ role }: { role: StaffRole }) {
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors',
+                      'group relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-all duration-150',
                       active
-                        ? 'bg-secondary font-medium text-secondary-foreground'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                        ? 'bg-gold/10 font-medium text-gold-hover'
+                        : 'text-foreground-secondary hover:translate-x-0.5 hover:bg-accent hover:text-foreground',
                     )}
                   >
-                    <Icon className="size-4 shrink-0" aria-hidden />
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-gold transition-opacity',
+                        active ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
+                    <Icon
+                      className={cn(
+                        'size-4 shrink-0 transition-colors',
+                        active ? 'text-gold' : 'text-muted-foreground group-hover:text-gold',
+                      )}
+                      aria-hidden
+                    />
                     {item.label}
                   </Link>
                 </li>

@@ -4,66 +4,60 @@
 
 /*
  * Design tokens — Doc 07 (Design System Blueprint).
- * PROVISIONAL palette: brand guidelines are an undelivered dependency
- * (BRD §27). The brand swap happens in this file only.
+ * TerraNext Global Ventures brand palette: luxury dark executive dashboard.
+ * Gold (#C9A227) is the primary accent, deep emerald (#1F6B4A) the secondary.
+ *
+ * The palette is defined identically on :root and .dark. The product ships a
+ * single luxury dark treatment by design, so a theme toggle must never drop
+ * the surface into an unbranded light mode mid-session.
  */
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 173 58% 26%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 72% 51%;
+  :root,
+  .dark {
+    /* Surfaces */
+    --background: 0 0% 2%; /* #050505 */
+    --surface: 150 15% 5%; /* #0B0F0D */
+    --card: 221 39% 11%; /* #111827 */
+    --card-foreground: 0 0% 100%;
+    --popover: 221 39% 11%;
+    --popover-foreground: 0 0% 100%;
+
+    /* Type */
+    --foreground: 0 0% 100%; /* #FFFFFF */
+    --foreground-secondary: 0 0% 72%; /* #B8B8B8 */
+    --muted: 150 12% 8%;
+    --muted-foreground: 0 0% 54%; /* #8A8A8A */
+
+    /* Brand — gold primary */
+    --primary: 46 67% 47%; /* #C9A227 */
+    --primary-foreground: 0 0% 2%; /* dark type on gold: 8.1:1 */
+    --gold: 46 67% 47%;
+    --gold-hover: 45 64% 57%; /* #D8B64C */
+
+    /* Brand — emerald secondary */
+    --secondary: 154 55% 27%; /* #1F6B4A */
+    --secondary-foreground: 0 0% 100%; /* white on emerald: 6.0:1 */
+    --emerald: 154 55% 27%;
+    --emerald-hover: 146 50% 36%; /* #2E8B57 */
+
+    /* Interaction surfaces */
+    --accent: 220 20% 14%;
+    --accent-foreground: 0 0% 100%;
+    --border: 0 0% 16%; /* #2A2A2A */
+    --input: 0 0% 16%;
+    --ring: 46 67% 47%;
+
+    --destructive: 0 72% 51%; /* #DC2626 */
     --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 173 58% 26%;
-    --radius: 0.5rem;
+
+    --radius: 0.75rem;
 
     /* Status palette — fixed semantics, brand-independent (Doc 07 §1) */
-    --status-info: 217 91% 60%;
-    --status-progress: 38 92% 50%;
-    --status-success: 142 71% 45%;
-    --status-danger: 0 72% 51%;
-    --status-neutral: 215 16% 47%;
-  }
-
-  .dark {
-    --background: 222 47% 7%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 173 50% 40%;
-    --primary-foreground: 222 47% 7%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 45%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 173 50% 40%;
-
-    --status-info: 217 91% 65%;
-    --status-progress: 38 92% 55%;
-    --status-success: 142 60% 50%;
-    --status-danger: 0 72% 55%;
-    --status-neutral: 215 20% 65%;
+    --status-info: 217 91% 60%; /* Contacted */
+    --status-progress: 38 92% 50%; /* #F59E0B Warning */
+    --status-success: 160 84% 39%; /* #10B981 Qualified */
+    --status-danger: 0 72% 51%; /* #DC2626 Rejected */
+    --status-neutral: 0 0% 54%; /* Closed */
   }
 }
 
@@ -71,7 +65,95 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
+    /* Two barely-there brand washes lift the page off pure black without
+       reading as colour. Fixed so they do not travel with scroll. */
+    background-image:
+      radial-gradient(ellipse 80% 50% at 15% -10%, hsl(var(--emerald) / 0.08), transparent),
+      radial-gradient(ellipse 60% 50% at 95% 0%, hsl(var(--gold) / 0.05), transparent);
+    background-attachment: fixed;
+  }
+
+  /* Visible focus on every interactive element (WCAG 2.4.7) */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  ::selection {
+    background: hsl(var(--gold) / 0.3);
+    color: hsl(var(--foreground));
+  }
+
+  /* Numerals are tabular everywhere so figures align down a column */
+  .font-mono,
+  [class*='tabular'] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Slim, unobtrusive scrollbars in keeping with the dark chrome */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--gold) / 0.5);
+  }
+}
+
+@layer components {
+  /* Frosted chrome for the topbar, dialogs and the login card. */
+  .glass {
+    background-color: hsl(var(--surface) / 0.72);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  /* Hairline top highlight — the detail that separates a premium card from
+     a flat one. Sits above the card, inside the rounded corner. */
+  .card-sheen {
+    position: relative;
+  }
+  .card-sheen::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.09), transparent);
+    pointer-events: none;
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(135deg, hsl(var(--gold-hover)), hsl(var(--gold)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@layer utilities {
+  /* Honour reduced-motion for every decorative animation in the system */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }

@@ -14,7 +14,7 @@ export async function listAdmissionCandidates(): Promise<AdmissionCandidate[]> {
     findQueueLeads(ADMISSION_STAGES),
     // One read for every lead's sessions, not one read per row.
     findSessionsByLead(),
-    adminDb().collection('users').get(),
+    adminDb().collection('users').limit(1000).get(),
   ]);
 
   const userNames = new Map(

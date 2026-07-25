@@ -28,35 +28,52 @@ function toIsoOrNull(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
-/** Names for both ref types in one pass — the log mixes leads and participants. */
-async function refNames(): Promise<Map<string, string>> {
+/** Names for the ref ids actually on this page — never a full collection scan. */
+async function refNames(
+  entries: { refType: RefType; refId: string }[],
+): Promise<Map<string, string>> {
   const db = adminDb();
-  const [leads, participants, users] = await Promise.all([
-    db.collection('leads').get(),
-    db.collection('participants').get(),
-    db.collection('users').get(),
+  const idsFor = (refType: RefType) =>
+    [...new Set(entries.filter((e) => e.refType === refType).map((e) => e.refId))].filter(
+      (id) => id.length > 0,
+    );
+  const leadIds = idsFor('lead');
+  const participantIds = idsFor('participant');
+  // Staff rows exist for internal digests (follow-up digest, Doc 19 §4).
+  const staffIds = idsFor('staff');
+
+  const [leadDocs, participantDocs, staffDocs] = await Promise.all([
+    Promise.all(leadIds.map((id) => db.collection('leads').doc(id).get())),
+    Promise.all(participantIds.map((id) => db.collection('participants').doc(id).get())),
+    Promise.all(staffIds.map((id) => db.collection('users').doc(id).get())),
   ]);
 
   const names = new Map<string, string>();
-  for (const doc of leads.docs) {
+  for (const doc of leadDocs) {
     names.set(`lead:${doc.id}`, asString(doc.get('name')));
   }
-  for (const doc of participants.docs) {
+  for (const doc of participantDocs) {
     const personal = (doc.get('personal') ?? {}) as Record<string, unknown>;
     names.set(`participant:${doc.id}`, asString(personal.fullName));
   }
-  // Staff rows exist for internal digests (follow-up digest, Doc 19 §4).
-  for (const doc of users.docs) {
+  for (const doc of staffDocs) {
     names.set(`staff:${doc.id}`, asString(doc.get('displayName')));
   }
   return names;
 }
 
 export async function findCommunications(): Promise<Communication[]> {
-  const [snap, names] = await Promise.all([
-    adminDb().collection('communications').orderBy('createdAt', 'desc').limit(500).get(),
-    refNames(),
-  ]);
+  const snap = await adminDb()
+    .collection('communications')
+    .orderBy('createdAt', 'desc')
+    .limit(500)
+    .get();
+  const names = await refNames(
+    snap.docs.map((doc) => ({
+      refType: (asString(doc.get('refType')) || 'lead') as RefType,
+      refId: asString(doc.get('refId')),
+    })),
+  );
 
   return snap.docs.map((doc) => {
     const data = doc.data();

@@ -108,28 +108,38 @@ export async function loadEligibilityEvidence(
 
 /* ── Reads ─────────────────────────────────────────────────────────────── */
 
-async function nameMaps() {
+/** Resolves only the participant/programme ids actually referenced — never a full collection scan. */
+async function nameMaps(participantIds: Iterable<string>, programmeIds: Iterable<string>) {
   const db = adminDb();
-  const [participants, programmes] = await Promise.all([
-    db.collection('participants').get(),
-    db.collection('programmes').get(),
+  const uniqueParticipants = [...new Set(participantIds)].filter((id) => id.length > 0);
+  const uniqueProgrammes = [...new Set(programmeIds)].filter((id) => id.length > 0);
+
+  const [participantDocs, programmeDocs] = await Promise.all([
+    Promise.all(uniqueParticipants.map((id) => db.collection('participants').doc(id).get())),
+    Promise.all(uniqueProgrammes.map((id) => db.collection('programmes').doc(id).get())),
   ]);
+
   return {
     participants: new Map(
-      participants.docs.map((d) => {
+      participantDocs.map((d) => {
         const personal = (d.get('personal') ?? {}) as Record<string, unknown>;
         return [d.id, asString(personal.fullName)];
       }),
     ),
-    programmes: new Map(programmes.docs.map((d) => [d.id, asString(d.get('name'))])),
+    programmes: new Map(programmeDocs.map((d) => [d.id, asString(d.get('name'))])),
   };
 }
 
 export async function findCertificates(): Promise<Certificate[]> {
-  const [snap, names] = await Promise.all([
-    adminDb().collection('certificates').orderBy('issuedAt', 'desc').limit(200).get(),
-    nameMaps(),
-  ]);
+  const snap = await adminDb()
+    .collection('certificates')
+    .orderBy('issuedAt', 'desc')
+    .limit(200)
+    .get();
+  const names = await nameMaps(
+    snap.docs.map((d) => asString(d.get('participantId'))),
+    snap.docs.map((d) => asString(d.get('programmeId'))),
+  );
   return snap.docs.map((doc) =>
     toCertificate(
       doc,
@@ -142,7 +152,10 @@ export async function findCertificates(): Promise<Certificate[]> {
 export async function findCertificateById(certificateId: string): Promise<Certificate | null> {
   const snap = await adminDb().collection('certificates').doc(certificateId).get();
   if (!snap.exists) return null;
-  const names = await nameMaps();
+  const names = await nameMaps(
+    [asString(snap.get('participantId'))],
+    [asString(snap.get('programmeId'))],
+  );
   return toCertificate(
     snap,
     names.participants.get(asString(snap.get('participantId'))) ?? null,

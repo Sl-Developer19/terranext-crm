@@ -12,14 +12,15 @@ export const metadata: Metadata = { title: 'Users' };
 export default async function UsersPage() {
   const session = await requirePermission('users:view');
   const users = await listStaffUsers();
-  const canManage = can(session.role, 'users:create');
+  const canManage = can(session.role, 'users:update');
+  const canInvite = can(session.role, 'users:create');
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Users"
         description="Staff accounts and role assignments. There is no self-registration — every account is provisioned here."
-        actions={canManage ? <InviteUserDialog /> : undefined}
+        actions={canInvite ? <InviteUserDialog /> : undefined}
       />
       <Card>
         <CardContent className="p-0">

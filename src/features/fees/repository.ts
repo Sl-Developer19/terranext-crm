@@ -74,30 +74,40 @@ function toFeeAccount(
   };
 }
 
-async function nameMaps() {
+/** Resolves only the participant/programme ids actually referenced — never a full collection scan. */
+async function nameMaps(participantIds: Iterable<string>, programmeIds: Iterable<string>) {
   const db = adminDb();
-  const [participants, programmes] = await Promise.all([
-    db.collection('participants').get(),
-    db.collection('programmes').get(),
+  const uniqueParticipants = [...new Set(participantIds)].filter((id) => id.length > 0);
+  const uniqueProgrammes = [...new Set(programmeIds)].filter((id) => id.length > 0);
+
+  const [participantDocs, programmeDocs] = await Promise.all([
+    Promise.all(uniqueParticipants.map((id) => db.collection('participants').doc(id).get())),
+    Promise.all(uniqueProgrammes.map((id) => db.collection('programmes').doc(id).get())),
   ]);
+
   return {
     participants: new Map(
-      participants.docs.map((d) => {
+      participantDocs.map((d) => {
         const personal = (d.get('personal') ?? {}) as Record<string, unknown>;
         return [d.id, asString(personal.fullName)];
       }),
     ),
-    programmes: new Map(programmes.docs.map((d) => [d.id, asString(d.get('name'))])),
+    programmes: new Map(programmeDocs.map((d) => [d.id, asString(d.get('name'))])),
   };
 }
 
 /* ── Reads ─────────────────────────────────────────────────────────────── */
 
 export async function findFeeAccounts(): Promise<FeeAccount[]> {
-  const [snap, names] = await Promise.all([
-    adminDb().collection('feeAccounts').orderBy('balancePaise', 'desc').limit(200).get(),
-    nameMaps(),
-  ]);
+  const snap = await adminDb()
+    .collection('feeAccounts')
+    .orderBy('balancePaise', 'desc')
+    .limit(200)
+    .get();
+  const names = await nameMaps(
+    snap.docs.map((d) => asString(d.get('participantId'))),
+    snap.docs.map((d) => asString(d.get('programmeId'))),
+  );
   return snap.docs.map((doc) =>
     toFeeAccount(
       doc,
@@ -110,7 +120,10 @@ export async function findFeeAccounts(): Promise<FeeAccount[]> {
 export async function findFeeAccountById(feeAccountId: string): Promise<FeeAccount | null> {
   const snap = await adminDb().collection('feeAccounts').doc(feeAccountId).get();
   if (!snap.exists) return null;
-  const names = await nameMaps();
+  const names = await nameMaps(
+    [asString(snap.get('participantId'))],
+    [asString(snap.get('programmeId'))],
+  );
   return toFeeAccount(
     snap,
     names.participants.get(asString(snap.get('participantId'))) ?? null,
@@ -140,15 +153,16 @@ export async function findPayments(feeAccountId: string): Promise<Payment[]> {
 }
 
 export async function findPendingFees(): Promise<PendingFeeRow[]> {
-  const [snap, names] = await Promise.all([
-    adminDb()
-      .collection('feeAccounts')
-      .where('balancePaise', '>', 0)
-      .orderBy('balancePaise', 'desc')
-      .limit(200)
-      .get(),
-    nameMaps(),
-  ]);
+  const snap = await adminDb()
+    .collection('feeAccounts')
+    .where('balancePaise', '>', 0)
+    .orderBy('balancePaise', 'desc')
+    .limit(200)
+    .get();
+  const names = await nameMaps(
+    snap.docs.map((d) => asString(d.get('participantId'))),
+    snap.docs.map((d) => asString(d.get('programmeId'))),
+  );
 
   const today = new Date().toISOString().slice(0, 10);
   return snap.docs.map((doc) => {

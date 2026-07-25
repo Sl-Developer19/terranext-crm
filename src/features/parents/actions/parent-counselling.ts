@@ -142,54 +142,84 @@ export async function convertParentToLead(
     const db = adminDb();
     const now = new Date();
     const leadRef = db.collection('leads').doc();
+    const parentRef = db.collection('families').doc(familyId).collection('parents').doc(parentId);
 
-    await leadRef.set({
-      schemaVersion: 1,
-      branchId: session.branchId,
-      name: parent.name,
-      phone: parent.phone,
-      email: parent.email,
-      source: 'referral',
-      // Provenance: this lead came from a counselled parent, which the
-      // college/campaign source fields could not express.
-      sourceDetail: { familyId, parentId },
-      programmeInterestId: programmeInterest || latestRecommendedProgramme(parentSessions) || null,
-      academyId: null,
-      stage: 'counselling_attended',
-      assignedToUid: session.role === 'consultant' ? session.uid : null,
-      nextFollowUpAt: null,
-      lostReason: null,
-      participantId: null,
-      consent: { given: true, at: now, textVersion: 'v1' },
-      createdAt: now,
-      createdBy: session.uid,
-      updatedAt: now,
-      updatedBy: session.uid,
-      deletedAt: null,
-      deletedBy: null,
+    // Lead creation and marking the parent converted commit atomically, so a
+    // retry after a partial failure (crash, network drop) can never create a
+    // second lead: the transaction re-checks parent.leadId itself, closing
+    // the same race the top-of-function idempotency check can't catch alone.
+    const committed = await db.runTransaction(async (tx) => {
+      const parentSnap = await tx.get(parentRef);
+      const existingLeadId = parentSnap.get('leadId') as string | null | undefined;
+      if (existingLeadId) return { leadId: existingLeadId, created: false as const };
+
+      tx.set(leadRef, {
+        schemaVersion: 1,
+        branchId: session.branchId,
+        name: parent.name,
+        phone: parent.phone,
+        email: parent.email,
+        source: 'referral',
+        // Provenance: this lead came from a counselled parent, which the
+        // college/campaign source fields could not express.
+        sourceDetail: { familyId, parentId },
+        programmeInterestId:
+          programmeInterest || latestRecommendedProgramme(parentSessions) || null,
+        academyId: null,
+        stage: 'counselling_attended',
+        assignedToUid: session.role === 'consultant' ? session.uid : null,
+        nextFollowUpAt: null,
+        lostReason: null,
+        participantId: null,
+        consent: { given: true, at: now, textVersion: 'v1' },
+        createdAt: now,
+        createdBy: session.uid,
+        updatedAt: now,
+        updatedBy: session.uid,
+        deletedAt: null,
+        deletedBy: null,
+      });
+      tx.update(parentRef, {
+        conversionStatus: 'lead_created',
+        leadId: leadRef.id,
+        updatedAt: now,
+        updatedBy: session.uid,
+      });
+
+      return { leadId: leadRef.id, created: true as const };
     });
 
-    await leadRef.collection('activities').add({
-      type: 'note',
-      summary: `Converted from parent counselling (family ${family.familyName})`,
-      at: now,
-      byUid: session.uid,
-    });
+    if (committed.created) {
+      try {
+        await leadRef.collection('activities').add({
+          type: 'note',
+          summary: `Converted from parent counselling (family ${family.familyName})`,
+          at: now,
+          byUid: session.uid,
+        });
+      } catch {
+        // Non-fatal — the lead and the parent's conversion state are already
+        // committed atomically above; only the activity note is missing.
+      }
 
-    await markParentConverted(familyId, parentId, leadRef.id, session.uid);
+      // Re-applies the same leadId/conversionStatus (already set above) and
+      // rolls the family-level status up — kept as the single source of
+      // truth for that rollup rather than duplicating it here.
+      await markParentConverted(familyId, parentId, committed.leadId, session.uid);
 
-    await writeAudit({
-      actorUid: session.uid,
-      actorRole: session.role,
-      action: 'create',
-      entityType: 'lead',
-      entityId: leadRef.id,
-      entityPath: `leads/${leadRef.id}`,
-      changes: { source: { before: null, after: `parent:${parentId}` } },
-      context: { feature: 'parents', reason: 'parent_conversion' },
-    });
+      await writeAudit({
+        actorUid: session.uid,
+        actorRole: session.role,
+        action: 'create',
+        entityType: 'lead',
+        entityId: committed.leadId,
+        entityPath: `leads/${committed.leadId}`,
+        changes: { source: { before: null, after: `parent:${parentId}` } },
+        context: { feature: 'parents', reason: 'parent_conversion' },
+      });
+    }
 
-    return ok({ leadId: leadRef.id });
+    return ok({ leadId: committed.leadId });
   } catch {
     return internalError('Could not convert the parent. Please try again.');
   }

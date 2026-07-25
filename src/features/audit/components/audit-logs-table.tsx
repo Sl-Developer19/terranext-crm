@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { StatusBadge, type StatusKind } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -71,6 +72,8 @@ interface Props {
   initialFilters: AuditLogFilters;
   /** Server action to reload entries with new filters (passed from page). */
   onFilterChange: (filters: AuditLogFilters) => Promise<AuditLogEntry[]>;
+  /** Server action that re-fetches and writes the BR-06 export audit entry. */
+  onExport: (filters: AuditLogFilters) => Promise<AuditLogEntry[]>;
   canExport: boolean;
 }
 
@@ -80,28 +83,39 @@ export function AuditLogsTable({
   initialEntries,
   initialFilters,
   onFilterChange,
+  onExport,
   canExport,
 }: Props) {
   const [entries, setEntries] = useState<AuditLogEntry[]>(initialEntries);
   const [filters, setFilters] = useState<AuditLogFilters>(initialFilters);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   /**
    * Exports what the analyst is currently looking at, filters and all —
    * exporting the unfiltered stream instead would be a different document
-   * from the one on screen. The read that produced these rows was already
-   * audited server-side by `fetchAuditLogs`.
+   * from the one on screen. Goes through `onExport` (not the already-loaded
+   * `entries` state) so the export event itself is written to the audit
+   * trail server-side (BR-06/SOP 17.16), not just the read that listed them.
    */
-  const handleExport = useCallback(() => {
-    const csv = toCsv(AUDIT_EXPORT_COLUMNS, entries.map(toExportRow));
-    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = csvFilename('audit-logs');
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [entries]);
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      const rows = await onExport(filters);
+      const csv = toCsv(AUDIT_EXPORT_COLUMNS, rows.map(toExportRow));
+      const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = csvFilename('audit-logs');
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Could not export audit logs. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  }, [filters, onExport]);
 
   const handleFiltersChange = useCallback(
     async (newFilters: AuditLogFilters) => {
@@ -110,6 +124,8 @@ export function AuditLogsTable({
       try {
         const result = await onFilterChange(newFilters);
         setEntries(result);
+      } catch {
+        toast.error('Could not load audit logs for these filters. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -125,10 +141,10 @@ export function AuditLogsTable({
           <button
             id="audit-export-btn"
             className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-50"
-            disabled={entries.length === 0}
+            disabled={entries.length === 0 || exporting}
             onClick={handleExport}
           >
-            Export CSV
+            {exporting ? 'Exporting…' : 'Export CSV'}
           </button>
         )}
       </div>

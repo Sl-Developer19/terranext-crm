@@ -17,6 +17,7 @@ export async function listStaffUsers(): Promise<StaffUser[]> {
     .collection('users')
     .where('deletedAt', '==', null)
     .orderBy('displayName')
+    .limit(1000)
     .get();
 
   return snap.docs.map((doc) => {

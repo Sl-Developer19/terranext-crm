@@ -2,7 +2,7 @@
 export { CreateLeadDialog } from './components/create-lead-dialog';
 export { LeadsTable } from './components/leads-table';
 export { LeadDetailView } from './components/lead-detail-view';
-export { listLeads, getLead, listLeadActivities, listConsultants } from './queries';
+export { listLeads, getLead, listLeadActivities, listConsultants, LEADS_SCAN_CAP } from './queries';
 export {
   LEAD_SOURCES,
   LEAD_STAGES,

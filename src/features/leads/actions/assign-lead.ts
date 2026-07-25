@@ -4,7 +4,14 @@ import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
 import { adminDb } from '@/lib/firebase/admin';
 import { can } from '@/lib/rbac/permissions';
-import { internalError, notFoundError, ok, permissionError, type Result } from '@/lib/utils/result';
+import {
+  internalError,
+  notFoundError,
+  ok,
+  permissionError,
+  validationError,
+  type Result,
+} from '@/lib/utils/result';
 
 import { assignLeadSchema, type AssignLeadInput } from '../schema';
 
@@ -18,7 +25,7 @@ export async function assignLead(input: AssignLeadInput): Promise<Result<{ ok: t
   if (!can(session.role, 'leads:assign')) return permissionError();
 
   const parsed = assignLeadSchema.safeParse(input);
-  if (!parsed.success) return permissionError('Invalid assignment request.');
+  if (!parsed.success) return validationError({ form: 'Invalid assignment request.' });
   const { leadId, assignToUid } = parsed.data;
 
   const db = adminDb();

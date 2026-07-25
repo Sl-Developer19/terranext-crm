@@ -162,6 +162,21 @@ export async function convertLead(
     });
     if (!feeCreated) {
       warnings.push('A fee account already existed for this enrolment and was left untouched.');
+    } else {
+      // This is the only real-world path that creates a fee account, and it
+      // bypassed the audit trail — write it here rather than reaching for the
+      // fees feature's own action, which would re-check a `fees:create`
+      // permission this ops_manager conversion flow was never granted.
+      await writeAudit({
+        actorUid: session.uid,
+        actorRole: session.role,
+        action: 'create',
+        entityType: 'fee_account',
+        entityId: outcome.enrolmentId,
+        entityPath: `feeAccounts/${outcome.enrolmentId}`,
+        changes: { totalPaise: { before: null, after: programme.feePlanDefault.totalPaise } },
+        context: { feature: 'admissions', reason: 'lead_conversion' },
+      });
     }
 
     return ok({ ...outcome, warnings });

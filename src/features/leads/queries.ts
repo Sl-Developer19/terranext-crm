@@ -53,6 +53,9 @@ function toLead(doc: QueryDocumentSnapshot | DocumentSnapshot, names: Map<string
   };
 }
 
+/** Directory reads are bounded — an unbounded org-wide scan is a real perf risk at scale. */
+export const LEADS_SCAN_CAP = 500;
+
 /**
  * Directory read for /leads (Doc 16 S10). Row-level scope (Doc 10 §2):
  * consultants see only leads assigned to them; ops_manager/founder see all.
@@ -64,7 +67,7 @@ export async function listLeads(session: Session): Promise<Lead[]> {
       ? base.where('assignedToUid', '==', session.uid).orderBy('updatedAt', 'desc')
       : base.orderBy('updatedAt', 'desc');
 
-  const snap = await query.get();
+  const snap = await query.limit(LEADS_SCAN_CAP).get();
   const names = await resolveDisplayNames(snap.docs.map((d) => d.get('assignedToUid') as unknown));
   return snap.docs.map((doc) => toLead(doc, names));
 }

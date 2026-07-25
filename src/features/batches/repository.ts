@@ -382,22 +382,24 @@ export async function createSessionsForDates(
   return created;
 }
 
+/** Returns the session's prior status, for accurate before/after audit entries. */
 export async function setSessionStatusRecord(
   batchId: string,
   sessionId: string,
   status: SessionStatus,
   actorUid: string,
-): Promise<void> {
+): Promise<SessionStatus | null> {
   const now = new Date();
-  await adminDb()
-    .collection('batches')
-    .doc(batchId)
-    .collection('sessions')
-    .doc(sessionId)
-    .update({
-      status,
-      ...(status === 'held' ? { heldAt: now } : {}),
-      updatedAt: now,
-      updatedBy: actorUid,
-    });
+  const ref = adminDb().collection('batches').doc(batchId).collection('sessions').doc(sessionId);
+  const snap = await ref.get();
+  const previousStatus = (snap.get('status') as SessionStatus | undefined) ?? null;
+
+  await ref.update({
+    status,
+    ...(status === 'held' ? { heldAt: now } : {}),
+    updatedAt: now,
+    updatedBy: actorUid,
+  });
+
+  return previousStatus;
 }

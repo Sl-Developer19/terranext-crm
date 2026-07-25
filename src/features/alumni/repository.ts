@@ -21,19 +21,29 @@ function toIso(value: unknown): string {
   return value instanceof Timestamp ? value.toDate().toISOString() : '';
 }
 
-export async function findAlumniRecords(): Promise<AlumniRecord[]> {
+/** Resolves only the participant ids on this page — never a full collection scan. */
+async function resolveParticipantNames(ids: Iterable<string>): Promise<Map<string, string>> {
   const db = adminDb();
-  const [alumni, participants] = await Promise.all([
-    db.collection('alumniRecords').orderBy('memberSince', 'desc').get(),
-    db.collection('participants').get(),
-  ]);
-
-  const names = new Map(
-    participants.docs.map((d) => {
-      const personal = (d.get('personal') ?? {}) as Record<string, unknown>;
-      return [d.id, asString(personal.fullName)];
+  const unique = [...new Set(ids)].filter((id) => id.length > 0);
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const snap = await db.collection('participants').doc(id).get();
+      const personal = (snap.get('personal') ?? {}) as Record<string, unknown>;
+      map.set(id, asString(personal.fullName) || id);
     }),
   );
+  return map;
+}
+
+export async function findAlumniRecords(): Promise<AlumniRecord[]> {
+  const db = adminDb();
+  const alumni = await db
+    .collection('alumniRecords')
+    .orderBy('memberSince', 'desc')
+    .limit(500)
+    .get();
+  const names = await resolveParticipantNames(alumni.docs.map((d) => d.id));
 
   return alumni.docs.map((doc) => {
     const data = doc.data();
@@ -54,8 +64,28 @@ export async function findAlumniRecords(): Promise<AlumniRecord[]> {
 }
 
 export async function findAlumniRecordById(participantId: string): Promise<AlumniRecord | null> {
-  const all = await findAlumniRecords();
-  return all.find((r) => r.participantId === participantId) ?? null;
+  const db = adminDb();
+  const snap = await db.collection('alumniRecords').doc(participantId).get();
+  if (!snap.exists) return null;
+  const data = snap.data() ?? {};
+
+  const participantSnap = await db.collection('participants').doc(participantId).get();
+  const personal = (participantSnap.get('personal') ?? {}) as Record<string, unknown>;
+  const participantName = participantSnap.exists ? asString(personal.fullName) : participantId;
+
+  const engagement = (data.engagement ?? {}) as Record<string, unknown>;
+  return {
+    participantId: snap.id,
+    participantName,
+    memberSince: toIso(data.memberSince),
+    triggeredByCertificateId: asStringOrNull(data.triggeredByCertificateId),
+    engagement: {
+      referrals: asNumber(engagement.referrals),
+      eventsAttended: asNumber(engagement.eventsAttended),
+    },
+    consentForSuccessStory: data.consentForSuccessStory === true,
+    updatedAt: toIso(data.updatedAt),
+  };
 }
 
 export async function recordEngagementDelta(

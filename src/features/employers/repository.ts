@@ -35,9 +35,12 @@ function toEmployer(
   };
 }
 
+/** Bounded — same document-scan cap convention as reports/certificates (Doc 14). */
+const PLACEMENTS_SCAN_CAP = 2000;
+
 /** Placement counts per employer — the placements collection may not have any docs yet. */
 async function placementCounts(): Promise<Map<string, number>> {
-  const snap = await adminDb().collection('placements').get();
+  const snap = await adminDb().collection('placements').limit(PLACEMENTS_SCAN_CAP).get();
   const counts = new Map<string, number>();
   for (const doc of snap.docs) {
     const employerId = asString(doc.get('employerId'));
@@ -48,7 +51,7 @@ async function placementCounts(): Promise<Map<string, number>> {
 
 export async function findEmployers(): Promise<Employer[]> {
   const [snap, counts] = await Promise.all([
-    adminDb().collection('employers').orderBy('name').get(),
+    adminDb().collection('employers').orderBy('name').limit(500).get(),
     placementCounts(),
   ]);
   return snap.docs.map((doc) => toEmployer(doc, counts.get(doc.id) ?? 0));
@@ -70,8 +73,13 @@ export async function findEmployerOptions(): Promise<EmployerOption[]> {
 export async function findEmployerById(employerId: string): Promise<Employer | null> {
   const snap = await adminDb().collection('employers').doc(employerId).get();
   if (!snap.exists) return null;
-  const counts = await placementCounts();
-  return toEmployer(snap, counts.get(employerId) ?? 0);
+  // A single employer's count is a scoped aggregate, not a full-collection scan.
+  const countSnap = await adminDb()
+    .collection('placements')
+    .where('employerId', '==', employerId)
+    .count()
+    .get();
+  return toEmployer(snap, countSnap.data().count);
 }
 
 export async function isEmployerNameTaken(name: string, exceptId?: string): Promise<boolean> {

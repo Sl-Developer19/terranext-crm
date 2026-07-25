@@ -116,23 +116,30 @@ export async function issueCertificateAction(
     // BR-05: certification creates the alumni record. Runs after issuance
     // rather than inside its transaction — the certificate is the fact that
     // matters, and this is idempotent, so a failure here is recoverable by
-    // re-running without risking the issuance itself.
-    const created = await ensureAlumniRecord(
-      participantId,
-      outcome.certificateId,
-      session.uid,
-      session.branchId,
-    );
-    if (created) {
-      await writeAudit({
-        actorUid: 'system',
-        actorRole: 'system',
-        action: 'create',
-        entityType: 'alumni_record',
-        entityId: participantId,
-        entityPath: `alumniRecords/${participantId}`,
-        context: { feature: 'certificates', reason: `BR-05:${outcome.certificateId}` },
-      });
+    // re-running without risking the issuance itself. Caught locally: a
+    // throw here must not fall into the outer catch and report the whole
+    // issuance as failed when the certificate was already issued and audited.
+    try {
+      const created = await ensureAlumniRecord(
+        participantId,
+        outcome.certificateId,
+        session.uid,
+        session.branchId,
+      );
+      if (created) {
+        await writeAudit({
+          actorUid: 'system',
+          actorRole: 'system',
+          action: 'create',
+          entityType: 'alumni_record',
+          entityId: participantId,
+          entityPath: `alumniRecords/${participantId}`,
+          context: { feature: 'certificates', reason: `BR-05:${outcome.certificateId}` },
+        });
+      }
+    } catch {
+      // Non-fatal — see above. The alumni record can be created by re-running
+      // this idempotent step; it must not undo a successful certificate issuance.
     }
 
     // Doc 19 §3 `onCertificateIssued`: notify the participant. Idempotent by

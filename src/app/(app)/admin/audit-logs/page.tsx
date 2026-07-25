@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
-import { fetchAuditLogs } from '@/features/audit/actions/fetch-audit-logs';
+import { exportAuditLogs, fetchAuditLogs } from '@/features/audit/actions/fetch-audit-logs';
 import { AuditLogsTable, listAuditLogs } from '@/features/audit';
 import type { AuditLogEntry, AuditLogFilters } from '@/features/audit';
 import { can } from '@/lib/rbac/permissions';
@@ -43,6 +43,17 @@ export default async function AuditLogsPage() {
     return result.ok ? result.data : [];
   }
 
+  /**
+   * Export goes through `exportAuditLogs`, not the already-loaded rows, so
+   * the export event itself is written to the audit trail (BR-06/SOP 17.16)
+   * rather than silently downloading a CSV client-side.
+   */
+  async function handleExport(filters: AuditLogFilters): Promise<AuditLogEntry[]> {
+    'use server';
+    const result = await exportAuditLogs(filters);
+    return result.ok ? result.data : [];
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -55,6 +66,7 @@ export default async function AuditLogsPage() {
             initialEntries={initialEntries}
             initialFilters={DEFAULT_FILTERS}
             onFilterChange={handleFilterChange}
+            onExport={handleExport}
             canExport={canExport}
           />
         </CardContent>

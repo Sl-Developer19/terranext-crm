@@ -154,6 +154,7 @@ export async function setCatalogueStatus(
   const { entity, id, status } = parsed.data;
 
   try {
+    let previousStatus: string;
     if (entity === 'academy') {
       const academy = await findAcademyById(id);
       if (!academy) return notFoundError('Academy not found.');
@@ -162,10 +163,12 @@ export async function setCatalogueStatus(
           'Archive or move this academy’s programmes first — they would otherwise reference an archived academy.',
         );
       }
+      previousStatus = academy.status;
       await setCatalogueStatusRecord('academies', id, status, session.uid);
     } else {
       const programme = await findProgrammeById(id);
       if (!programme) return notFoundError('Programme not found.');
+      previousStatus = programme.status;
       await setCatalogueStatusRecord('programmes', id, status, session.uid);
     }
 
@@ -176,7 +179,7 @@ export async function setCatalogueStatus(
       entityType: entity,
       entityId: id,
       entityPath: `${entity === 'academy' ? 'academies' : 'programmes'}/${id}`,
-      changes: { status: { before: null, after: status } },
+      changes: { status: { before: previousStatus, after: status } },
       context: { feature: 'catalogue' },
     });
 

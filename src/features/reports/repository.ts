@@ -48,7 +48,7 @@ export async function loadBatchUtilisation(): Promise<BatchUtilisationInput[]> {
   const db = adminDb();
   const [batches, programmes] = await Promise.all([
     db.collection('batches').limit(SCAN_CAP).get(),
-    db.collection('programmes').get(),
+    db.collection('programmes').limit(SCAN_CAP).get(),
   ]);
 
   const programmeNames = new Map(programmes.docs.map((d) => [d.id, asString(d.get('name'))]));
@@ -66,8 +66,8 @@ export async function loadAttendanceRisk(): Promise<AttendanceRiskInput[]> {
   const db = adminDb();
   const [enrolments, batches, programmes, participants] = await Promise.all([
     db.collectionGroup('enrolments').limit(SCAN_CAP).get(),
-    db.collection('batches').get(),
-    db.collection('programmes').get(),
+    db.collection('batches').limit(SCAN_CAP).get(),
+    db.collection('programmes').limit(SCAN_CAP).get(),
     db.collection('participants').limit(SCAN_CAP).get(),
   ]);
 

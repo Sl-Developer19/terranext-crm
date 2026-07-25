@@ -38,16 +38,25 @@ async function resolveNames(uids: unknown[]): Promise<Map<string, string>> {
   return map;
 }
 
+/** Resolves only the participant ids on this page — never a full collection scan. */
+async function resolveParticipantNames(ids: Iterable<string>): Promise<Map<string, string>> {
+  const db = adminDb();
+  const unique = [...new Set(ids)].filter((id) => id.length > 0);
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const snap = await db.collection('participants').doc(id).get();
+      const personal = (snap.get('personal') ?? {}) as Record<string, unknown>;
+      map.set(id, asString(personal.fullName) || id);
+    }),
+  );
+  return map;
+}
+
 export async function findCareerProfiles(): Promise<CareerProfileListItem[]> {
   const db = adminDb();
   const snap = await db.collection('careerProfiles').limit(500).get();
-  const participants = await db.collection('participants').get();
-  const names = new Map(
-    participants.docs.map((d) => {
-      const personal = (d.get('personal') ?? {}) as Record<string, unknown>;
-      return [d.id, asString(personal.fullName)];
-    }),
-  );
+  const names = await resolveParticipantNames(snap.docs.map((d) => d.id));
 
   return snap.docs
     .map((doc) => {

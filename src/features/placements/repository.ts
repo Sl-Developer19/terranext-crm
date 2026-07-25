@@ -96,8 +96,41 @@ export async function findPlacements(): Promise<Placement[]> {
 }
 
 export async function findPlacementById(placementId: string): Promise<Placement | null> {
-  const all = await findPlacements();
-  return all.find((p) => p.id === placementId) ?? null;
+  const db = adminDb();
+  const snap = await db.collection('placements').doc(placementId).get();
+  if (!snap.exists) return null;
+  const data = snap.data() ?? {};
+
+  const participantId = asString(data.participantId);
+  const employerId = asString(data.employerId);
+  const [participantSnap, employerSnap] = await Promise.all([
+    participantId ? db.collection('participants').doc(participantId).get() : null,
+    employerId ? db.collection('employers').doc(employerId).get() : null,
+  ]);
+  const personal = (participantSnap?.get('personal') ?? {}) as Record<string, unknown>;
+  const participantName = participantSnap?.exists ? asString(personal.fullName) : participantId;
+  const employerName = employerSnap?.exists ? asString(employerSnap.get('name')) : employerId;
+
+  const byUids = ((data.statusHistory ?? []) as Record<string, unknown>[]).map((h) => h.byUid);
+  const names = await resolveNames(byUids);
+
+  const feeDisclosure = (data.feeDisclosure ?? {}) as Record<string, unknown>;
+  return {
+    id: snap.id,
+    participantId,
+    participantName,
+    employerId,
+    employerName,
+    jobCategory: asString(data.jobCategory),
+    country: asString(data.country),
+    status: (data.status as PlacementStatus) ?? 'under_review',
+    statusHistory: toStatusHistory(data.statusHistory, names),
+    feeDisclosure: {
+      terranextFeePaise: 0 as const,
+      thirdPartyNotes: asStringOrNull(feeDisclosure.thirdPartyNotes),
+    },
+    updatedAt: toIso(data.updatedAt),
+  };
 }
 
 export async function createPlacementRecord(

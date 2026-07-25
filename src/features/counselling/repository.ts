@@ -29,19 +29,41 @@ interface Lookups {
   programmeNames: Map<string, string>;
 }
 
-async function loadLookups(): Promise<Lookups> {
+/** Resolves only the ids actually referenced on this page — never a full collection scan. */
+async function resolveMap(
+  collection: string,
+  ids: Iterable<string>,
+  field: string,
+): Promise<Map<string, string>> {
   const db = adminDb();
-  const [leads, users, programmes] = await Promise.all([
-    db.collection('leads').get(),
-    db.collection('users').get(),
-    db.collection('programmes').get(),
+  const unique = [...new Set(ids)].filter((id) => id.length > 0);
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const snap = await db.collection(collection).doc(id).get();
+      map.set(id, asString(snap.get(field)));
+    }),
+  );
+  return map;
+}
+
+async function loadLookups(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[] | FirebaseFirestore.DocumentSnapshot[],
+): Promise<Lookups> {
+  const leadIds = docs.map((d) => asString(d.get('leadId')));
+  const consultantUids = docs.map((d) => asString(d.get('consultantUid')));
+  const programmeIds = docs.map((d) => {
+    const raw = (d.get('recommendation') ?? null) as Record<string, unknown> | null;
+    return raw ? asString(raw.programmeId) : '';
+  });
+
+  const [leadNames, userNames, programmeNames] = await Promise.all([
+    resolveMap('leads', leadIds, 'name'),
+    resolveMap('users', consultantUids, 'displayName'),
+    resolveMap('programmes', programmeIds, 'name'),
   ]);
 
-  return {
-    leadNames: new Map(leads.docs.map((d) => [d.id, asString(d.get('name'))])),
-    userNames: new Map(users.docs.map((d) => [d.id, asString(d.get('displayName'))])),
-    programmeNames: new Map(programmes.docs.map((d) => [d.id, asString(d.get('name'))])),
-  };
+  return { leadNames, userNames, programmeNames };
 }
 
 function toSession(
@@ -77,19 +99,22 @@ function toSession(
 }
 
 export async function findSessions(): Promise<CounsellingSession[]> {
-  const [snap, lookups] = await Promise.all([
-    adminDb().collection('counsellingSessions').orderBy('heldAt', 'desc').limit(500).get(),
-    loadLookups(),
-  ]);
+  const snap = await adminDb()
+    .collection('counsellingSessions')
+    .orderBy('heldAt', 'desc')
+    .limit(500)
+    .get();
+  const lookups = await loadLookups(snap.docs);
   return snap.docs.map((doc) => toSession(doc, lookups));
 }
 
 /** BR-02 evidence for one lead — used by the admissions checklist and convert transaction. */
 export async function findSessionsForLead(leadId: string): Promise<CounsellingSession[]> {
-  const [snap, lookups] = await Promise.all([
-    adminDb().collection('counsellingSessions').where('leadId', '==', leadId).get(),
-    loadLookups(),
-  ]);
+  const snap = await adminDb()
+    .collection('counsellingSessions')
+    .where('leadId', '==', leadId)
+    .get();
+  const lookups = await loadLookups(snap.docs);
   return snap.docs
     .map((doc) => toSession(doc, lookups))
     .sort((a, b) => b.heldAt.localeCompare(a.heldAt));
@@ -172,9 +197,19 @@ export async function markLeadCounselled(
   // A `recommended` session is what the admissions queue filters on; the other
   // outcomes leave the lead where the consultant can still work it.
   const stage = outcome === 'recommended' ? 'hot' : 'counselling_attended';
-  await adminDb().collection('leads').doc(leadId).update({
-    stage,
-    updatedAt: new Date(),
-    updatedBy: actorUid,
+  const ref = adminDb().collection('leads').doc(leadId);
+
+  await adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    // An admitted lead already has a participant record. A session logged
+    // against it afterwards is still valid evidence, but must never regress
+    // the pipeline stage back out of `admitted` (BR-01).
+    if (snap.get('stage') === 'admitted') return;
+
+    tx.update(ref, {
+      stage,
+      updatedAt: new Date(),
+      updatedBy: actorUid,
+    });
   });
 }

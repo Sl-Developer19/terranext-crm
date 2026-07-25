@@ -113,7 +113,7 @@ export async function setSessionStatus(
     const batch = await findBatchById(batchId);
     if (!batch) return notFoundError('Batch not found.');
 
-    await setSessionStatusRecord(batchId, sessionId, status, session.uid);
+    const previousStatus = await setSessionStatusRecord(batchId, sessionId, status, session.uid);
 
     await writeAudit({
       actorUid: session.uid,
@@ -122,7 +122,7 @@ export async function setSessionStatus(
       entityType: 'batch',
       entityId: batchId,
       entityPath: `batches/${batchId}/sessions/${sessionId}`,
-      changes: { status: { before: null, after: status } },
+      changes: { status: { before: previousStatus, after: status } },
       context: { feature: 'batches', reason: 'session_status' },
     });
 

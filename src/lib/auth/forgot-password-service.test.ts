@@ -14,9 +14,12 @@ const INPUT: ForgotPasswordInput = {
   userAgent: 'vitest',
 };
 
-function harness(options?: { shouldSend?: boolean; link?: { oobCode: string } | null }) {
+function harness(options?: { shouldSend?: boolean; link?: string | null }) {
   const sent: Array<{ email: string; resetUrl: string }> = [];
-  const link = options && 'link' in options ? options.link : { oobCode: 'code-1' };
+  const link =
+    options && 'link' in options
+      ? options.link
+      : 'https://crm.terranextglobal.com/reset-password?oobCode=code-1';
   const deps: ForgotPasswordDeps = {
     throttle: { shouldSend: () => Promise.resolve(options?.shouldSend ?? true) },
     linkGenerator: { generate: () => Promise.resolve(link) },
@@ -64,7 +67,7 @@ describe('performForgotPassword (Doc 10 §1 extension)', () => {
 
   it('never varies its response shape between an existing and non-existing account', async () => {
     const existing = await performForgotPassword(
-      harness({ link: { oobCode: 'code-1' } }).deps,
+      harness({ link: 'https://crm.terranextglobal.com/reset-password?oobCode=code-1' }).deps,
       INPUT,
     );
     const missing = await performForgotPassword(harness({ link: null }).deps, INPUT);

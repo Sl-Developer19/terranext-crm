@@ -4,6 +4,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import { emailSignature, smsSignature } from '@/config/organisation';
 import { adminDb } from '@/lib/firebase/admin';
+import { renderBrandedEmailHtml } from '@/lib/messaging/email-template';
 import { getEmailProvider, getSmsProvider, getWhatsAppProvider } from '@/lib/messaging/providers';
 import type { SendOutcome } from '@/lib/messaging/types';
 
@@ -69,9 +70,27 @@ async function resolveAddress(
  * number is a one-line config edit rather than a sweep through every template.
  * Stored bodies stay clean of presentation.
  */
-async function send(channel: Channel, to: string, subject: string, body: string) {
+async function send(
+  channel: Channel,
+  to: string,
+  subject: string,
+  body: string,
+  appOrigin: string,
+) {
   if (channel === 'email') {
-    return getEmailProvider().send({ to, subject, body: `${body}\n${emailSignature()}` });
+    return getEmailProvider().send({
+      to,
+      subject,
+      body: `${body}\n${emailSignature()}`,
+      // bodyText is the raw message only — the branded layout has its own
+      // footer with the same org identity, so the plain-text emailSignature()
+      // above is not duplicated into the HTML alternative.
+      html: renderBrandedEmailHtml({
+        heading: subject || 'Message from TerraNext Global Ventures',
+        bodyText: body,
+        appOrigin,
+      }),
+    });
   }
   const provider = channel === 'whatsapp' ? getWhatsAppProvider() : getSmsProvider();
   return provider.send({ to, body: `${body}${smsSignature()}` });
@@ -79,6 +98,7 @@ async function send(channel: Channel, to: string, subject: string, body: string)
 
 export async function dispatchQueuedCommunications(
   now: Date = new Date(),
+  appOrigin = 'https://terranextglobal.com',
 ): Promise<DispatchSummary> {
   const db = adminDb();
   const summary: DispatchSummary = { examined: 0, sent: 0, failed: 0, requeued: 0, skipped: 0 };
@@ -120,7 +140,7 @@ export async function dispatchQueuedCommunications(
     } else if (!body) {
       outcome = { status: 'failed', reason: 'Message body is no longer available to send.' };
     } else {
-      outcome = await send(channel, address, asString(doc.get('subject')), body);
+      outcome = await send(channel, address, asString(doc.get('subject')), body, appOrigin);
     }
 
     const decision = decideNext(outcome, attempts, now);

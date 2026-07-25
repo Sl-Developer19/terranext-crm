@@ -33,10 +33,10 @@ import { provisionUser, type ProvisionUserResult } from '../actions/provision-us
 import { provisionUserSchema, type ProvisionUserInput } from '../schema';
 
 /**
- * S50 provisioning flow (Doc 16). On success, shows a one-time password
- * reset link for the admin to share via an existing channel — no
- * transactional email provider is chosen yet (Doc 21), matching
- * scripts/bootstrap-admin.mjs.
+ * S50 provisioning flow (Doc 16). A welcome email with a password-reset
+ * link is sent automatically (Doc 10 §1 extension). The link is also shown
+ * here once, as a fallback the admin can share directly if delivery fails
+ * or no email provider is configured — matching scripts/bootstrap-admin.mjs.
  */
 export function InviteUserDialog() {
   const router = useRouter();
@@ -104,8 +104,9 @@ export function InviteUserDialog() {
             <DialogHeader>
               <DialogTitle>Account created</DialogTitle>
               <DialogDescription>
-                Share this password-reset link with the new staff member — it expires in about an
-                hour. This is the only time it will be shown.
+                A welcome email with this password-reset link has been sent to the new staff member.
+                It expires in about an hour — this is the only time it will be shown here, so copy
+                it now if you would rather share it directly.
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center gap-2 rounded-md border bg-muted p-2">

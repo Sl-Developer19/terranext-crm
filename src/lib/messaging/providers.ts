@@ -80,6 +80,7 @@ function resendProvider(apiKey: string): EmailProvider {
           reply_to: ORGANISATION.replyTo,
           subject: message.subject,
           text: message.body,
+          ...(message.html ? { html: message.html } : {}),
         },
       ),
   };
@@ -97,7 +98,11 @@ function sendgridProvider(apiKey: string): EmailProvider {
           from: { email: ORGANISATION.senderEmail, name: ORGANISATION.senderName },
           reply_to: { email: ORGANISATION.replyTo },
           subject: message.subject,
-          content: [{ type: 'text/plain', value: message.body }],
+          // SendGrid wants text/plain before text/html when both are present.
+          content: [
+            { type: 'text/plain', value: message.body },
+            ...(message.html ? [{ type: 'text/html', value: message.html }] : []),
+          ],
         },
       ),
   };

@@ -14,6 +14,8 @@ export interface EmailMessage {
   to: string;
   subject: string;
   body: string;
+  /** Optional branded HTML alternative — providers that support it send a multipart message; `body` remains the plain-text fallback. */
+  html?: string;
 }
 
 export interface SmsMessage {

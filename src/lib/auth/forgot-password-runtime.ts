@@ -7,51 +7,45 @@ import type {
   ResetEmailSender,
   ResetLinkGenerator,
 } from '@/lib/auth/forgot-password-service';
+import { generateBrandedResetLink } from '@/lib/auth/reset-link';
 import { createResetRequestThrottle } from '@/lib/auth/reset-request-throttle';
 import { FirestoreResetRequestThrottleStore } from '@/lib/auth/reset-request-throttle-firestore';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
+import { renderBrandedEmailHtml } from '@/lib/messaging/email-template';
 import { getEmailProvider } from '@/lib/messaging/providers';
 import { systemClock } from '@/lib/utils/clock';
 
 /** Production wiring for the password-reset request flow (Doc 10 §1 extension). */
 
 const linkGenerator: ResetLinkGenerator = {
-  async generate(email) {
-    let link: string;
-    try {
-      // Admin SDK, not the public REST sendOobCode: this returns the link
-      // without sending Firebase's own hosted email, so we can send our own
-      // branded one instead and point it at our /reset-password page.
-      link = await adminAuth().generatePasswordResetLink(email);
-    } catch (error) {
-      // "no account for this email" is the expected shape of most calls
-      // here — the caller already treats a null result as "do nothing" so
-      // enumeration resistance holds either way. Anything else is logged
-      // for ops but still yields no email.
-      if ((error as { code?: string }).code !== 'auth/user-not-found') {
-        console.error('generatePasswordResetLink failed', error);
-      }
-      return null;
-    }
-    const oobCode = new URL(link).searchParams.get('oobCode');
-    return oobCode ? { oobCode } : null;
-  },
+  generate: (email, appOrigin) => generateBrandedResetLink(email, appOrigin),
 };
 
 const emailSender: ResetEmailSender = {
   async send(email, resetUrl) {
+    const bodyText =
+      'We received a request to reset your TerraNext Business OS password.\n\n' +
+      'If you did not request this, you can ignore this email — your password will not change.';
+
     const outcome = await getEmailProvider().send({
       to: email,
       subject: 'Reset your TerraNext Business OS password',
       body: [
-        'We received a request to reset your TerraNext Business OS password.',
+        bodyText,
         '',
         `Reset your password: ${resetUrl}`,
         '',
-        'This link expires in 1 hour and can only be used once. If you did ' +
-          'not request this, you can ignore this email — your password will not change.',
+        'This link expires in 1 hour and can only be used once.',
         emailSignature(),
       ].join('\n'),
+      html: renderBrandedEmailHtml({
+        heading: 'Reset your password',
+        preheader: 'Reset your TerraNext Business OS password.',
+        bodyText,
+        cta: { label: 'Reset your password', url: resetUrl },
+        footerNote: 'This link expires in 1 hour and can only be used once.',
+        appOrigin: new URL(resetUrl).origin,
+      }),
     });
     if (outcome.status === 'failed') {
       console.error('Password-reset email failed to send:', outcome.reason);

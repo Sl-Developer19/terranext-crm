@@ -1,8 +1,12 @@
 'use server';
 
 import { writeAudit } from '@/lib/audit/write';
+import { generateBrandedResetLink } from '@/lib/auth/reset-link';
 import { getSession } from '@/lib/auth/session';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { appOrigin } from '@/lib/http/app-origin';
+import { renderBrandedEmailHtml } from '@/lib/messaging/email-template';
+import { getEmailProvider } from '@/lib/messaging/providers';
 import { can } from '@/lib/rbac/permissions';
 import {
   conflictError,
@@ -19,10 +23,12 @@ import { provisionUserSchema, type ProvisionUserInput } from '../schema';
 export interface ProvisionUserResult {
   uid: string;
   /**
-   * Firebase password-reset link (Admin SDK, ~1h expiry). No transactional
-   * email provider is selected yet (Doc 21 RR — Phase 10 dependency), so the
-   * provisioning admin shares this via an existing channel — the same
-   * pattern as scripts/bootstrap-admin.mjs. Shown once; not persisted.
+   * Password-reset link (~1h expiry) pointing at our own branded
+   * `/reset-password` page. A welcome email carrying this link is sent
+   * automatically when an email provider is configured (Doc 10 §1
+   * extension). Also returned here so the provisioning admin can share it
+   * directly if delivery fails or no provider is configured — the same
+   * fallback `scripts/bootstrap-admin.mjs` uses. Shown once; not persisted.
    */
   resetLink: string;
 }
@@ -111,6 +117,41 @@ export async function provisionUser(
     context: { feature: 'users' },
   });
 
-  const resetLink = await auth.generatePasswordResetLink(email);
+  const origin = await appOrigin();
+  const brandedLink = await generateBrandedResetLink(email, origin);
+  // The account was just created, so a null result here means an unexpected
+  // Identity Toolkit failure rather than "no such account" — fall back to
+  // the raw Firebase link (the old behaviour) so the admin still has
+  // something to share, and skip the email since there is no branded URL.
+  const resetLink = brandedLink ?? (await auth.generatePasswordResetLink(email));
+
+  if (brandedLink) {
+    const bodyText =
+      `${displayName}, an account has been created for you on TerraNext Business OS.\n\n` +
+      'Set your password to sign in for the first time.';
+    const outcome = await getEmailProvider().send({
+      to: email,
+      subject: 'Your TerraNext Business OS account is ready',
+      body: [
+        bodyText,
+        '',
+        `Set your password: ${brandedLink}`,
+        '',
+        'This link expires in 1 hour and can only be used once.',
+      ].join('\n'),
+      html: renderBrandedEmailHtml({
+        heading: 'Welcome to TerraNext Business OS',
+        preheader: 'Your TerraNext Business OS account is ready.',
+        bodyText,
+        cta: { label: 'Set your password', url: brandedLink },
+        footerNote: 'This link expires in 1 hour and can only be used once.',
+        appOrigin: origin,
+      }),
+    });
+    if (outcome.status === 'failed') {
+      console.error('Welcome email failed to send:', outcome.reason);
+    }
+  }
+
   return ok({ uid, resetLink });
 }

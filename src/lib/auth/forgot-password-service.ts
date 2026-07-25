@@ -19,7 +19,7 @@ export interface ForgotPasswordInput {
 
 export interface ResetLinkGenerator {
   /** Returns null when no account exists for the email — never surfaced to the caller. */
-  generate(email: string): Promise<{ oobCode: string } | null>;
+  generate(email: string, appOrigin: string): Promise<string | null>;
 }
 
 export interface ResetEmailSender {
@@ -38,9 +38,8 @@ export async function performForgotPassword(
 ): Promise<Result<{ message: string }>> {
   const shouldSend = await deps.throttle.shouldSend(input.email);
   if (shouldSend) {
-    const link = await deps.linkGenerator.generate(input.email);
-    if (link) {
-      const resetUrl = `${input.appOrigin}/reset-password?oobCode=${encodeURIComponent(link.oobCode)}`;
+    const resetUrl = await deps.linkGenerator.generate(input.email, input.appOrigin);
+    if (resetUrl) {
       await deps.emailSender.send(input.email, resetUrl);
     }
   }

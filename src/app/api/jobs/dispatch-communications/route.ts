@@ -23,7 +23,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const summary = await dispatchQueuedCommunications();
+    const summary = await dispatchQueuedCommunications(new Date(), request.nextUrl.origin);
     return NextResponse.json({ ok: true, data: summary }, { status: 200 });
   } catch (error) {
     // A 500 tells Scheduler to retry, which is the behaviour we want for an

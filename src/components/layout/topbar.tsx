@@ -27,7 +27,10 @@ export function Topbar({ session, actions }: { session: Session; actions?: React
               {STAFF_ROLE_LABELS[session.role]}
             </Badge>
           </div>
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-gold/30 bg-gradient-to-br from-gold/25 to-emerald/20 font-mono text-xs font-semibold text-gold-hover">
+          <span
+            aria-hidden
+            className="flex size-9 shrink-0 items-center justify-center rounded-full border border-gold/30 bg-gradient-to-br from-gold/25 to-emerald/20 font-mono text-xs font-semibold text-gold-hover"
+          >
             {initialsOf(session)}
           </span>
         </div>

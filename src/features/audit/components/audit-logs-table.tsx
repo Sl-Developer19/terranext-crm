@@ -66,6 +66,19 @@ function formatAt(iso: string): string {
   }
 }
 
+/** `String(before/after)` reads "[object Object]" for a non-primitive change value — render it as JSON instead. */
+function formatChangeValue(value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '—';
+    }
+  }
+  return String(value);
+}
+
 interface Props {
   /** Initial data fetched server-side; client filters refetch via server action. */
   initialEntries: AuditLogEntry[];
@@ -272,9 +285,9 @@ function AuditTable({ entries }: { entries: AuditLogEntry[] }) {
                     .map(([field, { before, after }]) => (
                       <li key={field}>
                         <span className="font-medium text-foreground">{field}:</span>{' '}
-                        <span className="line-through opacity-60">{String(before ?? '—')}</span>
+                        <span className="line-through opacity-60">{formatChangeValue(before)}</span>
                         {' → '}
-                        <span>{String(after ?? '—')}</span>
+                        <span>{formatChangeValue(after)}</span>
                       </li>
                     ))}
                   {Object.keys(entry.changes).length > 3 && (

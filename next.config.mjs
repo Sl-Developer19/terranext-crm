@@ -17,6 +17,15 @@ const withBundleAnalyzer = bundleAnalyzer({
  * - **HSTS** is set with a two-year max-age and `preload`. That is effectively
  *   irreversible for the domain, which is correct for an authenticated app
  *   that should never be reachable over plaintext HTTP.
+ * - **`upgrade-insecure-requests`** rewrites every sub-resource request
+ *   (same-origin included) from `http:` to `https:` before it's sent. Fine
+ *   in production, where the app is only ever served over HTTPS — actively
+ *   breaks dev/LAN access over plain HTTP (e.g. `http://192.168.x.x:3000`),
+ *   where the browser dutifully upgrades `/_next/static/...`, `/favicon.ico`,
+ *   etc. to `https://` and gets `ERR_SSL_PROTOCOL_ERROR` since nothing is
+ *   listening there. `localhost` is exempt (browsers treat it as a secure
+ *   context), which is why this only surfaces when reached by IP. Gated the
+ *   same way HSTS already is, for the same reason.
  */
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -33,7 +42,7 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  'upgrade-insecure-requests',
+  ...(isDev ? [] : ['upgrade-insecure-requests']),
 ].join('; ');
 
 const securityHeaders = [

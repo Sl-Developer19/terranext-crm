@@ -31,12 +31,17 @@ const DURATION_MS = 800;
  * final figure instead of animating. Pure rAF — no animation library.
  */
 export function AnimatedNumber({ value, format }: { value: number; format: NumberFormat }) {
-  const reduceMotion =
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const [display, setDisplay] = React.useState(reduceMotion ? value : 0);
-  const previous = React.useRef(reduceMotion ? value : 0);
+  // Initial render/state must match server output exactly (always 0) — the
+  // prefers-reduced-motion check can only run client-side, inside the effect
+  // below, or a client whose OS/browser prefers reduced motion hydrates
+  // straight to `value` while the server always rendered 0, causing a
+  // hydration mismatch on every load.
+  const [display, setDisplay] = React.useState(0);
+  const previous = React.useRef(0);
 
   React.useEffect(() => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     if (reduceMotion) {
       setDisplay(value);
       previous.current = value;

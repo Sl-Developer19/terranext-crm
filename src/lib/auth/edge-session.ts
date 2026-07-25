@@ -1,6 +1,34 @@
-import { decodeJwt, decodeProtectedHeader, importX509, jwtVerify } from 'jose';
+import { decodeProtectedHeader, importX509, jwtVerify } from 'jose';
 
 import { env } from '@/lib/env';
+
+/**
+ * Unverified JWT payload decode (base64url, no signature check) — used only
+ * for the emulator branch below, where there is no real signature to check
+ * against. Hand-rolled rather than `jose`'s `decodeJwt` so this file doesn't
+ * add a second, avoidable reason to pull in `jose`'s JWE/compression path.
+ *
+ * Doesn't fully silence it, though: `decodeProtectedHeader`/`importX509`/
+ * `jwtVerify` below are load-bearing for the real RS256 verification path
+ * and route through the same `jose` webapi barrel, which still drags in
+ * `CompressionStream`/`DecompressionStream` (unsupported on the Edge
+ * runtime) regardless of which named export triggers it. That surfaces as a
+ * build-time warning, not a runtime failure — none of the affected JWE code
+ * ever executes on this path — and is a `jose`-packaging characteristic,
+ * not something fixable from this file without dropping RS256 verification
+ * entirely.
+ */
+function decodeJwtPayloadUnsafe(token: string): Record<string, unknown> | null {
+  const segment = token.split('.')[1];
+  if (!segment) return null;
+  try {
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Edge-runtime session-cookie check for middleware (Doc 05 §4 layer 1).
@@ -53,8 +81,8 @@ export async function verifySessionCookieOnEdge(
 ): Promise<EdgeSession | null> {
   try {
     if (env().NEXT_PUBLIC_USE_EMULATORS) {
-      const payload = decodeJwt(sessionCookie);
-      if (typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
+      const payload = decodeJwtPayloadUnsafe(sessionCookie);
+      if (!payload || typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
       return {
         uid: payload.sub,
         role: typeof payload.role === 'string' ? payload.role : null,

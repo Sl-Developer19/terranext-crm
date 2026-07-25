@@ -27,7 +27,7 @@ export function MobileSidebar({ role }: { role: StaffRole }) {
         <button
           type="button"
           aria-label="Open navigation"
-          className="flex size-9 items-center justify-center rounded-md text-foreground-secondary transition-colors hover:bg-accent hover:text-gold md:hidden"
+          className="flex size-9 items-center justify-center rounded-md text-foreground-secondary transition-colors hover:bg-accent hover:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:hidden"
         >
           <Menu className="size-5" aria-hidden />
         </button>
@@ -43,7 +43,7 @@ export function MobileSidebar({ role }: { role: StaffRole }) {
             <Logo size="sm" />
             <DialogPrimitive.Close
               aria-label="Close navigation"
-              className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-gold"
+              className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <X className="size-4" aria-hidden />
             </DialogPrimitive.Close>

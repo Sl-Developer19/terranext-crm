@@ -239,7 +239,7 @@ export function LeadDetailView({
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Programme interest</div>
-              <div>{lead.programmeInterest ?? '—'}</div>
+              <div>{lead.programmeInterestName ?? '—'}</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Source</div>

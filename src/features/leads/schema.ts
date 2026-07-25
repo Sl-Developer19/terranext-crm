@@ -90,6 +90,7 @@ export interface Lead {
   email: string | null;
   source: LeadSource;
   programmeInterest: string | null;
+  programmeInterestName: string | null;
   stage: LeadStage;
   assignedToUid: string | null;
   assignedToName: string | null;

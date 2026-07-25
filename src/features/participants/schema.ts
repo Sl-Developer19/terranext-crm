@@ -240,7 +240,9 @@ export interface ParticipantListItem {
   phone: string;
   status: ParticipantStatus;
   academyId: string | null;
+  academyName: string | null;
   batchId: string | null;
+  batchName: string | null;
   updatedAt: string;
 }
 

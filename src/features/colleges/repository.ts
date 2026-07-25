@@ -73,14 +73,28 @@ export async function findColleges(): Promise<College[]> {
   return snap.docs.map((doc) => toCollege(doc, stats, leaders));
 }
 
-export async function findCollegeById(collegeId: string): Promise<College | null> {
-  const [doc, stats, leaders] = await Promise.all([
-    adminDb().collection('colleges').doc(collegeId).get(),
-    leadStats(),
-    leaderCounts(),
+/** Scoped to one college — never the org-wide scan `leadStats()`/`leaderCounts()` do for the list view. */
+async function collegeStatsById(
+  collegeId: string,
+): Promise<{ stats: { leads: number; admitted: number }; leaderCount: number }> {
+  const db = adminDb();
+  const leadsQuery = db.collection('leads').where('sourceDetail.collegeId', '==', collegeId);
+  const [totalSnap, admittedSnap, leaderSnap] = await Promise.all([
+    leadsQuery.count().get(),
+    leadsQuery.where('stage', '==', 'admitted').count().get(),
+    db.collection('colleges').doc(collegeId).collection('campusLeaders').count().get(),
   ]);
+  return {
+    stats: { leads: totalSnap.data().count, admitted: admittedSnap.data().count },
+    leaderCount: leaderSnap.data().count,
+  };
+}
+
+export async function findCollegeById(collegeId: string): Promise<College | null> {
+  const doc = await adminDb().collection('colleges').doc(collegeId).get();
   if (!doc.exists) return null;
-  return toCollege(doc, stats, leaders);
+  const { stats, leaderCount } = await collegeStatsById(collegeId);
+  return toCollege(doc, new Map([[collegeId, stats]]), new Map([[collegeId, leaderCount]]));
 }
 
 export async function findCampusLeaders(collegeId: string): Promise<CampusLeader[]> {

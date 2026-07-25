@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
+import { listBatches } from '@/features/batches';
+import { listAcademies } from '@/features/catalogue';
 import {
   CreateParticipantDialog,
   ParticipantFilters,
@@ -35,7 +37,11 @@ export default async function ParticipantsPage({
     batchId: single('batchId') || undefined,
   });
   const applied = filters.success ? filters.data : {};
-  const participants = await listParticipants(applied);
+  const [participants, academies, batches] = await Promise.all([
+    listParticipants(applied),
+    listAcademies(),
+    listBatches({}),
+  ]);
   const canCreate = can(session.role, 'participants:create');
 
   return (
@@ -51,6 +57,8 @@ export default async function ParticipantsPage({
         initialStatus={single('status')}
         initialAcademyId={single('academyId')}
         initialBatchId={single('batchId')}
+        academyOptions={academies.map((a) => ({ id: a.id, name: a.name }))}
+        batchOptions={batches.map((b) => ({ id: b.id, name: b.code }))}
       />
 
       <Card>

@@ -75,8 +75,8 @@ export function ParticipantsTable({
                 label={PARTICIPANT_STATUS_LABELS[participant.status]}
               />
             </TableCell>
-            <TableCell className="text-sm">{participant.academyId ?? '—'}</TableCell>
-            <TableCell className="text-sm">{participant.batchId ?? '—'}</TableCell>
+            <TableCell className="text-sm">{participant.academyName ?? '—'}</TableCell>
+            <TableCell className="text-sm">{participant.batchName ?? '—'}</TableCell>
             <TableCell className="text-sm text-muted-foreground">
               {participant.updatedAt
                 ? formatDistanceToNow(new Date(participant.updatedAt), { addSuffix: true })

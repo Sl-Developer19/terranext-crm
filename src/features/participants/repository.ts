@@ -84,9 +84,15 @@ export function toParticipant(doc: DocumentSnapshot | QueryDocumentSnapshot): Pa
   };
 }
 
-function toListItem(doc: QueryDocumentSnapshot): ParticipantListItem {
+function toListItem(
+  doc: QueryDocumentSnapshot,
+  academyNames: Map<string, string>,
+  batchNames: Map<string, string>,
+): ParticipantListItem {
   const data = doc.data();
   const personal = (data.personal ?? {}) as Record<string, unknown>;
+  const academyId = asStringOrNull(data.currentAcademyId);
+  const batchId = asStringOrNull(data.currentBatchId);
   return {
     id: doc.id,
     fullName: asString(personal.fullName),
@@ -94,10 +100,32 @@ function toListItem(doc: QueryDocumentSnapshot): ParticipantListItem {
     status: data.status as ParticipantStatus,
     // Denormalized from the current enrolment so the directory renders
     // without an N+1 read per row (Doc 03 §0 denormalization rule).
-    academyId: asStringOrNull(data.currentAcademyId),
-    batchId: asStringOrNull(data.currentBatchId),
+    academyId,
+    academyName: academyId ? (academyNames.get(academyId) ?? academyId) : null,
+    batchId,
+    batchName: batchId ? (batchNames.get(batchId) ?? batchId) : null,
     updatedAt: toIso(data.updatedAt) ?? '',
   };
+}
+
+/** Resolves only the ids actually referenced on this page — never a full collection scan. */
+async function resolveNamesFrom(
+  collection: string,
+  ids: Iterable<string | null>,
+  field: string,
+): Promise<Map<string, string>> {
+  const db = adminDb();
+  const unique = [...new Set(ids)].filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
+  );
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const snap = await db.collection(collection).doc(id).get();
+      map.set(id, typeof snap.get(field) === 'string' ? (snap.get(field) as string) : id);
+    }),
+  );
+  return map;
 }
 
 /* ── Reads ─────────────────────────────────────────────────────────────── */
@@ -120,7 +148,19 @@ export async function findParticipants(
   // per filter combination; ordering by name keeps one index serving all of
   // them and reads more naturally in a directory than "recently updated".
   const snap = await query.orderBy('personal.fullName').limit(200).get();
-  return snap.docs.map(toListItem);
+  const [academyNames, batchNames] = await Promise.all([
+    resolveNamesFrom(
+      'academies',
+      snap.docs.map((d) => asStringOrNull(d.get('currentAcademyId'))),
+      'name',
+    ),
+    resolveNamesFrom(
+      'batches',
+      snap.docs.map((d) => asStringOrNull(d.get('currentBatchId'))),
+      'code',
+    ),
+  ]);
+  return snap.docs.map((doc) => toListItem(doc, academyNames, batchNames));
 }
 
 export async function findParticipantById(participantId: string): Promise<Participant | null> {

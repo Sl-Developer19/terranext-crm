@@ -30,11 +30,15 @@ export function ParticipantFilters({
   initialStatus,
   initialAcademyId,
   initialBatchId,
+  academyOptions,
+  batchOptions,
 }: {
   initialQuery: string;
   initialStatus: string;
   initialAcademyId: string;
   initialBatchId: string;
+  academyOptions: { id: string; name: string }[];
+  batchOptions: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -108,24 +112,39 @@ export function ParticipantFilters({
 
       <div className="space-y-2">
         <Label htmlFor="filter-academy">Academy</Label>
-        <Input
-          id="filter-academy"
-          className="w-44"
-          placeholder="Academy"
-          defaultValue={initialAcademyId}
-          onBlur={(event) => apply({ academyId: event.target.value })}
-        />
+        <Select
+          value={initialAcademyId || ALL}
+          onValueChange={(value) => apply({ academyId: value })}
+        >
+          <SelectTrigger id="filter-academy" className="w-44">
+            <SelectValue placeholder="All academies" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All academies</SelectItem>
+            {academyOptions.map((academy) => (
+              <SelectItem key={academy.id} value={academy.id}>
+                {academy.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="filter-batch">Batch</Label>
-        <Input
-          id="filter-batch"
-          className="w-44"
-          placeholder="Batch"
-          defaultValue={initialBatchId}
-          onBlur={(event) => apply({ batchId: event.target.value })}
-        />
+        <Select value={initialBatchId || ALL} onValueChange={(value) => apply({ batchId: value })}>
+          <SelectTrigger id="filter-batch" className="w-44">
+            <SelectValue placeholder="All batches" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All batches</SelectItem>
+            {batchOptions.map((batch) => (
+              <SelectItem key={batch.id} value={batch.id}>
+                {batch.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {hasFilters ? (

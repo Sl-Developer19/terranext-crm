@@ -4,6 +4,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { DocumentSnapshot, Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebase/admin';
+import { resolveDisplayNames as resolveNames } from '@/lib/firebase/resolve-display-names';
 
 import { buildFamilySearchTokens, highestConversionStatus } from './logic';
 import type {
@@ -57,19 +58,6 @@ function toFamily(
     createdAt: toIso(data.createdAt) ?? '',
     updatedAt: toIso(data.updatedAt) ?? '',
   };
-}
-
-async function resolveNames(uids: unknown[]): Promise<Map<string, string>> {
-  const unique = [...new Set(uids.filter((v): v is string => typeof v === 'string' && v !== ''))];
-  const map = new Map<string, string>();
-  await Promise.all(
-    unique.map(async (uid) => {
-      const snap = await adminDb().collection('users').doc(uid).get();
-      const name = snap.get('displayName');
-      map.set(uid, typeof name === 'string' ? name : 'Unknown');
-    }),
-  );
-  return map;
 }
 
 /* ── Reads ─────────────────────────────────────────────────────────────── */

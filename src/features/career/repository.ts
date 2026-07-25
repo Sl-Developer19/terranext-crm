@@ -3,6 +3,7 @@ import 'server-only';
 import { Timestamp } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebase/admin';
+import { resolveDisplayNames as resolveNames } from '@/lib/firebase/resolve-display-names';
 
 import type {
   CareerProfile,
@@ -23,19 +24,6 @@ function asStringOrNull(value: unknown): string | null {
 }
 function toIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
-}
-
-async function resolveNames(uids: unknown[]): Promise<Map<string, string>> {
-  const unique = [...new Set(uids.filter((v): v is string => typeof v === 'string' && v !== ''))];
-  const map = new Map<string, string>();
-  await Promise.all(
-    unique.map(async (uid) => {
-      const snap = await adminDb().collection('users').doc(uid).get();
-      const name = snap.get('displayName');
-      map.set(uid, typeof name === 'string' ? name : 'Unknown');
-    }),
-  );
-  return map;
 }
 
 /** Resolves only the participant ids on this page — never a full collection scan. */

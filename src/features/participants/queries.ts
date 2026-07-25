@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { adminDb } from '@/lib/firebase/admin';
+import { resolveDisplayNames } from '@/lib/firebase/resolve-display-names';
 
 import {
   findDocuments,
@@ -22,19 +22,6 @@ import type {
  * Read models for the participant screens (Doc 16 S20/S21). Thin composition
  * over the repository — page components never touch Firestore directly.
  */
-
-async function resolveDisplayNames(uids: unknown[]): Promise<Map<string, string>> {
-  const unique = [...new Set(uids.filter((v): v is string => typeof v === 'string' && v !== ''))];
-  const map = new Map<string, string>();
-  await Promise.all(
-    unique.map(async (uid) => {
-      const snap = await adminDb().collection('users').doc(uid).get();
-      const name = snap.get('displayName');
-      map.set(uid, typeof name === 'string' ? name : 'Unknown');
-    }),
-  );
-  return map;
-}
 
 /** S20 directory with search + filters. */
 export async function listParticipants(

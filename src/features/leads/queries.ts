@@ -5,6 +5,7 @@ import type { QueryDocumentSnapshot, DocumentSnapshot } from 'firebase-admin/fir
 
 import type { Session } from '@/lib/auth/session';
 import { adminDb } from '@/lib/firebase/admin';
+import { resolveDisplayNames } from '@/lib/firebase/resolve-display-names';
 
 import { isLeadRowScoped } from './logic';
 import type { Lead, LeadActivity } from './schema';
@@ -13,34 +14,37 @@ function toIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
-async function resolveDisplayNames(uids: unknown[]): Promise<Map<string, string>> {
-  const unique = [...new Set(uids.filter((v): v is string => typeof v === 'string'))];
+async function resolveProgrammeNames(ids: unknown[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((v): v is string => typeof v === 'string'))];
   const map = new Map<string, string>();
   await Promise.all(
-    unique.map(async (uid) => {
-      const snap = await adminDb().collection('users').doc(uid).get();
-      map.set(
-        uid,
-        typeof snap.get('displayName') === 'string'
-          ? (snap.get('displayName') as string)
-          : 'Unknown',
-      );
+    unique.map(async (id) => {
+      const snap = await adminDb().collection('programmes').doc(id).get();
+      map.set(id, typeof snap.get('name') === 'string' ? (snap.get('name') as string) : id);
     }),
   );
   return map;
 }
 
-function toLead(doc: QueryDocumentSnapshot | DocumentSnapshot, names: Map<string, string>): Lead {
+function toLead(
+  doc: QueryDocumentSnapshot | DocumentSnapshot,
+  names: Map<string, string>,
+  programmeNames: Map<string, string>,
+): Lead {
   const data = doc.data() ?? {};
   const assignedToUid = typeof data.assignedToUid === 'string' ? data.assignedToUid : null;
+  const programmeInterest =
+    typeof data.programmeInterestId === 'string' ? data.programmeInterestId : null;
   return {
     id: doc.id,
     name: typeof data.name === 'string' ? data.name : '',
     phone: typeof data.phone === 'string' ? data.phone : '',
     email: typeof data.email === 'string' ? data.email : null,
     source: data.source,
-    programmeInterest:
-      typeof data.programmeInterestId === 'string' ? data.programmeInterestId : null,
+    programmeInterest,
+    programmeInterestName: programmeInterest
+      ? (programmeNames.get(programmeInterest) ?? programmeInterest)
+      : null,
     stage: data.stage,
     assignedToUid,
     assignedToName: assignedToUid ? (names.get(assignedToUid) ?? null) : null,
@@ -68,8 +72,11 @@ export async function listLeads(session: Session): Promise<Lead[]> {
       : base.orderBy('updatedAt', 'desc');
 
   const snap = await query.limit(LEADS_SCAN_CAP).get();
-  const names = await resolveDisplayNames(snap.docs.map((d) => d.get('assignedToUid') as unknown));
-  return snap.docs.map((doc) => toLead(doc, names));
+  const [names, programmeNames] = await Promise.all([
+    resolveDisplayNames(snap.docs.map((d) => d.get('assignedToUid') as unknown)),
+    resolveProgrammeNames(snap.docs.map((d) => d.get('programmeInterestId') as unknown)),
+  ]);
+  return snap.docs.map((doc) => toLead(doc, names, programmeNames));
 }
 
 /** Single-lead read for /leads/[leadId] (Doc 16 S11), row-scoped like listLeads. */
@@ -81,8 +88,11 @@ export async function getLead(session: Session, leadId: string): Promise<Lead | 
   const assignedToUid = typeof data.assignedToUid === 'string' ? data.assignedToUid : null;
   if (isLeadRowScoped(session.role, assignedToUid, session.uid)) return null;
 
-  const names = await resolveDisplayNames([assignedToUid]);
-  return toLead(snap, names);
+  const [names, programmeNames] = await Promise.all([
+    resolveDisplayNames([assignedToUid]),
+    resolveProgrammeNames([data.programmeInterestId]),
+  ]);
+  return toLead(snap, names, programmeNames);
 }
 
 export async function listLeadActivities(leadId: string): Promise<LeadActivity[]> {

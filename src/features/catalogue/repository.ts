@@ -8,6 +8,9 @@ import type { Academy, CatalogueStatus, Installment, Programme, ProgrammeOption 
 
 /** Catalogue data access (Doc 03 §1.2). Actions own permission + audit. */
 
+/** Academies/programmes are reference data (business-bounded, low hundreds at most) — this is a defensive cap, not an expected limit. */
+const CATALOGUE_SCAN_CAP = 500;
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
@@ -66,8 +69,8 @@ function toProgramme(
 export async function findAcademies(): Promise<Academy[]> {
   const db = adminDb();
   const [academies, programmes] = await Promise.all([
-    db.collection('academies').orderBy('name').get(),
-    db.collection('programmes').get(),
+    db.collection('academies').orderBy('name').limit(CATALOGUE_SCAN_CAP).get(),
+    db.collection('programmes').limit(CATALOGUE_SCAN_CAP).get(),
   ]);
 
   const counts = new Map<string, number>();
@@ -92,8 +95,8 @@ export async function findAcademies(): Promise<Academy[]> {
 export async function findProgrammes(): Promise<Programme[]> {
   const db = adminDb();
   const [programmes, academies] = await Promise.all([
-    db.collection('programmes').orderBy('name').get(),
-    db.collection('academies').get(),
+    db.collection('programmes').orderBy('name').limit(CATALOGUE_SCAN_CAP).get(),
+    db.collection('academies').limit(CATALOGUE_SCAN_CAP).get(),
   ]);
 
   const academyNames = new Map<string, string>();
@@ -108,8 +111,13 @@ export async function findProgrammes(): Promise<Programme[]> {
 export async function findProgrammeOptions(): Promise<ProgrammeOption[]> {
   const db = adminDb();
   const [programmes, academies] = await Promise.all([
-    db.collection('programmes').where('status', '==', 'active').orderBy('name').get(),
-    db.collection('academies').get(),
+    db
+      .collection('programmes')
+      .where('status', '==', 'active')
+      .orderBy('name')
+      .limit(CATALOGUE_SCAN_CAP)
+      .get(),
+    db.collection('academies').limit(CATALOGUE_SCAN_CAP).get(),
   ]);
 
   const academyNames = new Map<string, string>();

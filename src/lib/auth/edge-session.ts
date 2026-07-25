@@ -1,4 +1,6 @@
-import { decodeProtectedHeader, importX509, jwtVerify } from 'jose';
+import { decodeJwt, decodeProtectedHeader, importX509, jwtVerify } from 'jose';
+
+import { env } from '@/lib/env';
 
 /**
  * Edge-runtime session-cookie check for middleware (Doc 05 §4 layer 1).
@@ -9,6 +11,12 @@ import { decodeProtectedHeader, importX509, jwtVerify } from 'jose';
  * project. This is a fast *routing* gate — revocation checking and role
  * loading happen server-side in getSession() (defense in depth, Doc 04 §4);
  * a revoked-but-unexpired cookie passes here and is rejected there.
+ *
+ * The Auth emulator does not sign session cookies against Google's real
+ * production keys, so this fast path skips signature verification when
+ * `NEXT_PUBLIC_USE_EMULATORS` is set — which, per `src/lib/firebase/client.ts`,
+ * is never true in production. getSession()'s Admin SDK verification (which
+ * is itself emulator-aware) remains the authoritative check either way.
  */
 
 const SESSION_CERT_URL = 'https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys';
@@ -44,6 +52,15 @@ export async function verifySessionCookieOnEdge(
   projectId: string,
 ): Promise<EdgeSession | null> {
   try {
+    if (env().NEXT_PUBLIC_USE_EMULATORS) {
+      const payload = decodeJwt(sessionCookie);
+      if (typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
+      return {
+        uid: payload.sub,
+        role: typeof payload.role === 'string' ? payload.role : null,
+      };
+    }
+
     const { kid } = decodeProtectedHeader(sessionCookie);
     if (!kid) return null;
 

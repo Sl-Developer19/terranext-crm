@@ -2,4 +2,15 @@
 export { LoginForm } from './components/login-form';
 export { SignOutButton } from './components/sign-out-button';
 export { IdleLockGate } from './components/idle-lock-gate';
-export { loginSchema, type LoginInput, reauthSchema, type ReauthInput } from './schema';
+export { ForgotPasswordForm } from './components/forgot-password-form';
+export { ResetPasswordForm } from './components/reset-password-form';
+export {
+  loginSchema,
+  type LoginInput,
+  reauthSchema,
+  type ReauthInput,
+  forgotPasswordSchema,
+  type ForgotPasswordInput,
+  resetPasswordSchema,
+  type ResetPasswordInput,
+} from './schema';

@@ -4,7 +4,7 @@ import { verifySessionCookieOnEdge } from '@/lib/auth/edge-session';
 import { env } from '@/lib/env';
 
 const SESSION_COOKIE_NAME = '__session';
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
 
 /**
  * Route protection, layer 1 (Doc 05 §4): every application route requires a

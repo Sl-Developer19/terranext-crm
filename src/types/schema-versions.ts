@@ -9,6 +9,7 @@ export const SCHEMA_VERSIONS = {
   loginSecurity: 1,
   loginAttempts: 1,
   securityEvents: 1,
+  passwordResetRequests: 1,
 } as const;
 
 export type VersionedCollection = keyof typeof SCHEMA_VERSIONS;

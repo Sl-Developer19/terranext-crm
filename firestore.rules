@@ -44,6 +44,11 @@ service cloud.firestore {
     match /securityEvents/{eventId} {
       allow read, write: if false;
     }
+    // Password-reset request cooldown ledger (Doc 10 §1 extension) — same
+    // server-only rationale as loginSecurity above.
+    match /passwordResetRequests/{emailHash} {
+      allow read, write: if false;
+    }
     // Public-endpoint rate-limit counters (createLead). Admin SDK only — a
     // client that could read or reset these could trivially defeat them.
     match /rateLimits/{windowKey} {

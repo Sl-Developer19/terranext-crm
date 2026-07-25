@@ -64,6 +64,18 @@ const nextConfig = {
   eslint: {
     dirs: ['src'],
   },
+  images: {
+    // Participant/employer document previews would render via the Storage
+    // signed-URL flow (src/features/participants/actions/manage-documents.ts);
+    // the CSP img-src above already allowlists this host for plain <img>, so
+    // next/image needs the matching remotePattern to serve the same URLs.
+    remotePatterns: [{ protocol: 'https', hostname: 'firebasestorage.googleapis.com' }],
+  },
+  experimental: {
+    // lucide-react is imported piecemeal across nearly every table/component;
+    // this lets Next tree-shake it per-icon instead of pulling the barrel.
+    optimizePackageImports: ['lucide-react'],
+  },
   async headers() {
     return [
       {

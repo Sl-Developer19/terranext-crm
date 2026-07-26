@@ -7,6 +7,7 @@ import { listSessionsForLead } from '@/features/counselling/queries';
 import { createFeeAccountRecord } from '@/features/fees/repository';
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
+import { notifyPartner } from '@/lib/notifications/partner-notifications';
 import { can } from '@/lib/rbac/permissions';
 import {
   conflictError,
@@ -126,6 +127,13 @@ export async function convertLead(
           : {}),
       },
     });
+
+    if (outcome.partnerId) {
+      await notifyPartner(outcome.partnerId, {
+        type: 'admission_approved',
+        message: 'One of your referrals was admitted.',
+      }).catch(() => undefined);
+    }
 
     // Post-core steps. Each owns its own invariant, and neither is allowed to
     // undo an admission that is already valid — so a failure here is reported

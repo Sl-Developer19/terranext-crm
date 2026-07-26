@@ -2,6 +2,7 @@
 
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
+import { notifyPartner } from '@/lib/notifications/partner-notifications';
 import { can } from '@/lib/rbac/permissions';
 import {
   conflictError,
@@ -138,6 +139,29 @@ export async function recordPayment(
       changes: { amountPaise: { before: null, after: amountPaise } },
       context: { feature: 'fees', reason: `receipt:${outcome.receiptNo}` },
     });
+
+    // Doc 25 §10 — the reward already committed atomically with the payment
+    // inside recordPaymentRecord's own transaction; this is the audit trail
+    // and the partner-facing notification, deliberately outside it (a
+    // transaction callback can be retried, so side effects like these must
+    // never live inside one).
+    if (outcome.reward) {
+      await writeAudit({
+        actorUid: session.uid,
+        actorRole: session.role,
+        action: 'create',
+        entityType: 'reward_ledger_entry',
+        entityId: outcome.reward.ledgerId,
+        entityPath: `rewardLedger/${outcome.reward.ledgerId}`,
+        changes: { amountPaise: { before: null, after: outcome.reward.amountPaise } },
+        context: { feature: 'rewards', reason: `payment:${outcome.paymentId}` },
+      });
+
+      await notifyPartner(outcome.reward.partnerId, {
+        type: 'reward_generated',
+        message: `You earned ${formatPaise(outcome.reward.amountPaise)} for a successful admission payment.`,
+      }).catch(() => undefined);
+    }
 
     return ok({ receiptNo: outcome.receiptNo });
   } catch {

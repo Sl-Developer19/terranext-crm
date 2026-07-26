@@ -3,6 +3,7 @@ import 'server-only';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { DocumentSnapshot, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
+import { matchActiveRewardRuleInTx, writeRewardInTx } from '@/features/rewards/repository';
 import { adminDb } from '@/lib/firebase/admin';
 
 import {
@@ -237,7 +238,14 @@ export async function createFeeAccountRecord(record: CreateFeeAccountRecord): Pr
 }
 
 export type PaymentOutcome =
-  | { kind: 'recorded'; paymentId: string; receiptNo: string }
+  | {
+      kind: 'recorded';
+      paymentId: string;
+      receiptNo: string;
+      /** Doc 25 §10 — set only when the enrolment traces to a Growth Partner
+       * referral and an active reward rule matched; never computed manually. */
+      reward: { partnerId: string; ledgerId: string; amountPaise: number } | null;
+    }
   | { kind: 'exceeds_balance'; balancePaise: number }
   | { kind: 'account_missing' };
 
@@ -289,6 +297,20 @@ export async function recordPaymentRecord(
       return { kind: 'exceeds_balance', balancePaise: balance };
     }
 
+    // Doc 25 §10 reward engine — reads only, must precede every write below
+    // (Firestore transactions require all reads before any write). A
+    // participant with no referring partner is the common case and skips
+    // straight past both reads' results being empty.
+    const participantId = asStringOrNull(accountSnap.get('participantId'));
+    const partnerId = participantId
+      ? asStringOrNull(
+          (await tx.get(db.collection('participants').doc(participantId))).get('partnerId'),
+        )
+      : null;
+    const rule = partnerId
+      ? await matchActiveRewardRuleInTx(tx, asString(accountSnap.get('programmeId')))
+      : null;
+
     const counterSnap = await tx.get(counterRef);
     // The receipt sequence resets each financial year (Doc 14 §3), so a
     // counter left over from a previous FY restarts rather than continuing.
@@ -331,7 +353,29 @@ export async function recordPaymentRecord(
       updatedBy: actorUid,
     });
 
-    return { kind: 'recorded', paymentId: paymentRef.id, receiptNo };
+    // Reward generation is part of this same transaction — a reward can
+    // never be recorded without the payment that earned it, or vice versa.
+    const reward =
+      partnerId && participantId && rule
+        ? writeRewardInTx(tx, {
+            partnerId,
+            participantId,
+            feeAccountId,
+            paymentId: paymentRef.id,
+            rule,
+            paymentAmountPaise: input.amountPaise,
+          })
+        : null;
+
+    return {
+      kind: 'recorded',
+      paymentId: paymentRef.id,
+      receiptNo,
+      reward:
+        reward && partnerId
+          ? { partnerId, ledgerId: reward.ledgerId, amountPaise: reward.amountPaise }
+          : null,
+    };
   });
 }
 

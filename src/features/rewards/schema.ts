@@ -51,3 +51,45 @@ export interface RewardRule {
   updatedAt: string;
   updatedBy: string;
 }
+
+/**
+ * A reward accrual (Doc 25 §4/§10) — one immutable entry per successful
+ * payment that matched an active rule, same append-only posture as
+ * `auditLogs` (ADR-007). `status` only ever moves accrued -> paid, driven by
+ * the payout workflow (slice 5), never edited directly.
+ */
+export const REWARD_LEDGER_STATUSES = ['accrued', 'paid'] as const;
+export type RewardLedgerStatus = (typeof REWARD_LEDGER_STATUSES)[number];
+
+export interface RewardLedgerEntry {
+  id: string;
+  partnerId: string;
+  participantId: string;
+  feeAccountId: string;
+  paymentId: string;
+  ruleId: string;
+  amountPaise: number;
+  status: RewardLedgerStatus;
+  createdAt: string;
+}
+
+/** Doc 25 §12 — one wallet per partner; `balancePaise` moves only inside the
+ * same transaction as a `walletTransactions` entry (never a bare counter write). */
+export interface Wallet {
+  partnerId: string;
+  balancePaise: number;
+  updatedAt: string;
+}
+
+export const WALLET_TRANSACTION_KINDS = ['credit', 'debit'] as const;
+export type WalletTransactionKind = (typeof WALLET_TRANSACTION_KINDS)[number];
+
+export interface WalletTransaction {
+  id: string;
+  kind: WalletTransactionKind;
+  amountPaise: number;
+  reason: string;
+  refLedgerId: string | null;
+  refPayoutId: string | null;
+  createdAt: string;
+}

@@ -972,6 +972,41 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── rewardLedger/* (Doc 25 §10/§12/§13) ─────────────────────────────────
+    // Read: staff with `rewards:view` (oversight, all partners) OR the
+    //   referred partner's own entries. Write: Admin SDK only — every entry
+    //   is generated inside the fees payment transaction (recordPaymentRecord),
+    //   the same immutable, append-only posture as auditLogs (ADR-007).
+    match /rewardLedger/{ledgerId} {
+      allow read: if can_rewards_view() || isOwnPartnerRecord(resource.data.partnerId);
+      allow write: if false; // Admin SDK only
+    }
+
+    // ── wallets/* (Doc 25 §12) ───────────────────────────────────────────────
+    // Read: staff with `rewards:view` OR the owning partner. Write: Admin SDK
+    //   only — `balancePaise` only ever moves inside the same transaction as
+    //   a `transactions` entry (reward credit or payout debit); a
+    //   client-writable balance is exactly how a wallet stops reconciling.
+    match /wallets/{partnerId} {
+      allow read: if can_rewards_view() || isOwnPartnerRecord(partnerId);
+      allow write: if false; // Admin SDK only
+
+      match /transactions/{txId} {
+        allow read: if can_rewards_view() || isOwnPartnerRecord(partnerId);
+        allow write: if false; // Admin SDK only — append-only ledger
+      }
+    }
+
+    // ── partnerNotifications/* (Doc 25 §14) ─────────────────────────────────
+    // Read: the owning partner only — this is not staff oversight data.
+    // Write: Admin SDK only (notifyPartner()).
+    match /partnerNotifications/{partnerId} {
+      match /items/{itemId} {
+        allow read: if isOwnPartnerRecord(partnerId);
+        allow write: if false; // Admin SDK only
+      }
+    }
+
     // Deny-all default. Every business collection must add an explicit block
     // above this wildcard in the same PR that introduces the collection
     // (Doc 09 §4 PR checklist). Hard `delete` stays false everywhere (ADR-009).

@@ -101,6 +101,22 @@
       ]
     },
     {
+      "collectionGroup": "rewardLedger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "partnerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "rewardRules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "programmeId", "order": "ASCENDING" },
+        { "fieldPath": "active", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "participants",
       "queryScope": "COLLECTION",
       "fields": [

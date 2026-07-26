@@ -5,6 +5,7 @@ import { generateBrandedResetLink } from '@/lib/auth/reset-link';
 import { getSession } from '@/lib/auth/session';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { appOrigin } from '@/lib/http/app-origin';
+import { notifyPartner } from '@/lib/notifications/partner-notifications';
 import { renderBrandedEmailHtml } from '@/lib/messaging/email-template';
 import { getEmailProvider } from '@/lib/messaging/providers';
 import { can } from '@/lib/rbac/permissions';
@@ -149,6 +150,11 @@ export async function decideGrowthPartner(
       console.error('Growth Partner welcome email failed to send:', outcome.reason);
     }
   }
+
+  await notifyPartner(partnerId, {
+    type: 'partner_approved',
+    message: 'Your Growth Partner account has been approved.',
+  }).catch(() => undefined);
 
   return ok({ ok: true });
 }

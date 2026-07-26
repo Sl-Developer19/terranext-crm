@@ -115,6 +115,9 @@ export interface ConvertLeadRecord {
 export interface ConvertOutcome {
   participantId: string;
   enrolmentId: string;
+  /** Doc 25 — carried back so the caller can notify the referring partner
+   * without a second read of the lead it already just read. */
+  partnerId: string | null;
 }
 
 function searchTokens(fullName: string, phone: string): string[] {
@@ -231,6 +234,6 @@ export async function convertLeadRecord(record: ConvertLeadRecord): Promise<Conv
       updatedBy: record.actorUid,
     });
 
-    return { participantId, enrolmentId: enrolmentRef.id };
+    return { participantId, enrolmentId: enrolmentRef.id, partnerId };
   });
 }

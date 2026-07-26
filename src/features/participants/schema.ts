@@ -224,6 +224,8 @@ export interface ParticipantFamily {
 export interface Participant {
   id: string;
   leadId: string | null;
+  /** Growth Partner who referred the originating lead, if any (Doc 25). */
+  partnerId: string | null;
   personal: ParticipantPersonal;
   family: ParticipantFamily;
   status: ParticipantStatus;

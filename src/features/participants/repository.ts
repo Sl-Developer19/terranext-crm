@@ -59,6 +59,7 @@ export function toParticipant(doc: DocumentSnapshot | QueryDocumentSnapshot): Pa
   return {
     id: doc.id,
     leadId: asStringOrNull(data.leadId),
+    partnerId: asStringOrNull(data.partnerId),
     personal: {
       fullName: asString(personal.fullName),
       dob: toIso(personal.dob),

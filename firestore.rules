@@ -723,23 +723,25 @@ service cloud.firestore {
     // call can_leads_view(), can_users_create(), etc.
     // <<GENERATED_RBAC_END>>
 
-    // ── leads/* (Doc 03 §1.3, Doc 18) ───────────────────────────────────────
+    // ── leads/* (Doc 03 §1.3, Doc 18, Doc 25 §5) ────────────────────────────
     // Read: ops_manager/founder see every lead; consultants see only leads
-    //   assigned to them (Doc 10 §2 row-level scope). Write: Admin SDK only —
-    //   all lead mutations go through server actions (create/update/assign/
-    //   log-activity) so BR-07 dedupe-never-rejects and the audit trail stay
-    //   enforced in one place, not duplicated into rules validation.
+    //   assigned to them (Doc 10 §2 row-level scope); a Growth Partner sees
+    //   only leads they referred (`partnerId` match, ADR-014) — never routed
+    //   through `can_leads_view()`, which is staff-only by construction.
+    //   Write: Admin SDK only — all lead mutations go through server actions
+    //   (create/update/assign/log-activity/createPartnerLead) so BR-07
+    //   dedupe-never-rejects and the audit trail stay enforced in one place.
     match /leads/{leadId} {
-      allow read: if can_leads_view() && (
+      allow read: if (can_leads_view() && (
         hasRole('founder') || hasRole('ops_manager') || resource.data.assignedToUid == request.auth.uid
-      );
+      )) || isOwnPartnerRecord(resource.data.partnerId);
       allow write: if false; // Admin SDK only
 
       match /activities/{activityId} {
-        allow read: if can_leads_view() && (
+        allow read: if (can_leads_view() && (
           hasRole('founder') || hasRole('ops_manager') ||
           get(/databases/$(database)/documents/leads/$(leadId)).data.assignedToUid == request.auth.uid
-        );
+        )) || isOwnPartnerRecord(get(/databases/$(database)/documents/leads/$(leadId)).data.partnerId);
         allow write: if false; // Admin SDK only
       }
     }

@@ -68,6 +68,7 @@ export async function createLead(input: CreateLeadInput): Promise<Result<CreateL
       academyId: null,
       stage: 'new',
       assignedToUid: session.role === 'consultant' ? session.uid : null,
+      partnerId: null,
       nextFollowUpAt: null,
       lostReason: null,
       participantId: null,

@@ -87,11 +87,12 @@ export const config = {
   // lockout policy), session DELETE (clears its own cookie), error reports
   // (must work before/without a session), certificate verification
   // (an employer checking a certificate has no CRM account — Doc 19 §1),
-  // website lead intake (a visitor on the marketing site has no session
-  // either — createLead defends itself with an origin allow-list, honeypot
-  // and rate limits instead, Doc 20 §2), and the partner session DELETE
-  // (Doc 25, ADR-014 — same "clears its own cookie" rationale as api/session).
+  // website lead intake and Growth Partner registration (a visitor on the
+  // marketing site has no session either — both defend themselves with an
+  // origin allow-list, honeypot, and rate limits instead, Doc 20 §2 /
+  // Doc 25 §4), and the partner session DELETE (Doc 25, ADR-014 — same
+  // "clears its own cookie" rationale as api/session).
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/session|api/partner-session|api/auth|api/errors|api/certificates/verify|api/createLead|.*\\.(?:svg|png|jpg|ico)).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/session|api/partner-session|api/auth|api/errors|api/certificates/verify|api/createLead|api/registerGrowthPartner|.*\\.(?:svg|png|jpg|ico)).*)',
   ],
 };

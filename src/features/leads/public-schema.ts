@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { LEAD_TYPES } from './schema';
+
 /**
  * Public website intake contract (Doc 20 §2, BR-07, FR-07).
  *
@@ -24,6 +26,11 @@ export type FormType = (typeof FORM_TYPES)[number];
 export const createPublicLeadSchema = z
   .object({
     formType: z.enum(FORM_TYPES),
+    // Who the enquiry is on behalf of — required on every website enquiry
+    // (General Enquiry form requirement), independent of `formType`.
+    leadType: z.enum(LEAD_TYPES, {
+      errorMap: () => ({ message: 'Select who this enquiry is for' }),
+    }),
     name: z.string().trim().min(2).max(80),
     phone: z.string().trim().regex(E164),
     email: z.string().trim().email().nullable().default(null),

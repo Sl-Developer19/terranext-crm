@@ -29,6 +29,10 @@ export type LeadStage = (typeof LEAD_STAGES)[number];
 export const LEAD_ACTIVITY_TYPES = ['call', 'note', 'stage_change', 'followup'] as const;
 export type LeadActivityType = (typeof LEAD_ACTIVITY_TYPES)[number];
 
+/** Who the enquiry is on behalf of (website intake requirement). */
+export const LEAD_TYPES = ['student', 'parent', 'corporate', 'institution', 'other'] as const;
+export type LeadType = (typeof LEAD_TYPES)[number];
+
 export const createLeadSchema = z
   .object({
     name: z.string().trim().min(2, "Enter the lead's name").max(120),
@@ -83,6 +87,28 @@ export const logLeadActivitySchema = z
 
 export type LogLeadActivityInput = z.infer<typeof logLeadActivitySchema>;
 
+/** A Growth Partner submitting a referral (Doc 25 §4) — always `source: 'referral'`,
+ * never assigned by the partner themselves. */
+export const createPartnerLeadSchema = z
+  .object({
+    name: z.string().trim().min(2, "Enter the lead's name").max(120),
+    phone: z.string().trim().regex(E164, 'Enter phone in E.164 format, e.g. +919876543210'),
+    email: z
+      .string()
+      .trim()
+      .email('Enter a valid email address')
+      .optional()
+      .or(z.literal(''))
+      .transform((v) => (v ? v : undefined)),
+    programmeInterest: z.string().trim().max(120).optional().or(z.literal('')),
+    consentGiven: z.literal(true, {
+      errorMap: () => ({ message: 'Consent is required to submit a referral' }),
+    }),
+  })
+  .strict();
+
+export type CreatePartnerLeadInput = z.infer<typeof createPartnerLeadSchema>;
+
 /** Soft-delete only (ADR-009) — Founder/System Administrator only (`leads:delete`). */
 export const deleteLeadSchema = z
   .object({
@@ -103,6 +129,11 @@ export interface Lead {
   stage: LeadStage;
   assignedToUid: string | null;
   assignedToName: string | null;
+  /** Growth Partner who referred this lead, if any (Doc 25). */
+  partnerId: string | null;
+  partnerName: string | null;
+  /** Who the enquiry is on behalf of — set on website intake, null otherwise. */
+  leadType: LeadType | null;
   nextFollowUpAt: string | null;
   lostReason: string | null;
   participantId: string | null;

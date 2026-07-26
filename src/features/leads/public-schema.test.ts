@@ -5,6 +5,7 @@ import { createPublicLeadSchema } from './public-schema';
 function valid(overrides: Record<string, unknown> = {}) {
   return {
     formType: 'general',
+    leadType: 'student',
     name: 'Asha Menon',
     phone: '+919876543210',
     email: 'asha@example.com',
@@ -22,12 +23,27 @@ describe('createPublicLeadSchema', () => {
   it('defaults email and programme interest to null rather than undefined', () => {
     const result = createPublicLeadSchema.parse({
       formType: 'general',
+      leadType: 'student',
       name: 'Asha Menon',
       phone: '+919876543210',
       consent: { given: true, textVersion: 'v1' },
     });
     expect(result.email).toBeNull();
     expect(result.programmeInterestSlug).toBeNull();
+  });
+
+  it('rejects an unknown lead type', () => {
+    expect(createPublicLeadSchema.safeParse(valid({ leadType: 'business' })).success).toBe(false);
+  });
+
+  it('rejects a submission missing lead type', () => {
+    expect(createPublicLeadSchema.safeParse(valid({ leadType: undefined })).success).toBe(false);
+  });
+
+  it('accepts every lead type in the contract', () => {
+    for (const leadType of ['student', 'parent', 'corporate', 'institution', 'other']) {
+      expect(createPublicLeadSchema.safeParse(valid({ leadType })).success).toBe(true);
+    }
   });
 
   it('rejects a submission without consent', () => {

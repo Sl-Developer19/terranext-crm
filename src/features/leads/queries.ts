@@ -26,13 +26,29 @@ async function resolveProgrammeNames(ids: unknown[]): Promise<Map<string, string
   return map;
 }
 
+/** Doc 25 — growthPartners displayName lookup, same shape as resolveDisplayNames. */
+async function resolvePartnerNames(ids: unknown[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((v): v is string => typeof v === 'string'))];
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const snap = await adminDb().collection('growthPartners').doc(id).get();
+      const name = snap.get('displayName');
+      map.set(id, typeof name === 'string' ? name : id);
+    }),
+  );
+  return map;
+}
+
 function toLead(
   doc: QueryDocumentSnapshot | DocumentSnapshot,
   names: Map<string, string>,
   programmeNames: Map<string, string>,
+  partnerNames: Map<string, string>,
 ): Lead {
   const data = doc.data() ?? {};
   const assignedToUid = typeof data.assignedToUid === 'string' ? data.assignedToUid : null;
+  const partnerId = typeof data.partnerId === 'string' ? data.partnerId : null;
   const programmeInterest =
     typeof data.programmeInterestId === 'string' ? data.programmeInterestId : null;
   return {
@@ -48,6 +64,9 @@ function toLead(
     stage: data.stage,
     assignedToUid,
     assignedToName: assignedToUid ? (names.get(assignedToUid) ?? null) : null,
+    partnerId,
+    partnerName: partnerId ? (partnerNames.get(partnerId) ?? null) : null,
+    leadType: typeof data.leadType === 'string' ? (data.leadType as Lead['leadType']) : null,
     nextFollowUpAt: toIso(data.nextFollowUpAt),
     lostReason: typeof data.lostReason === 'string' ? data.lostReason : null,
     participantId: typeof data.participantId === 'string' ? data.participantId : null,
@@ -72,11 +91,12 @@ export async function listLeads(session: Session): Promise<Lead[]> {
       : base.orderBy('updatedAt', 'desc');
 
   const snap = await query.limit(LEADS_SCAN_CAP).get();
-  const [names, programmeNames] = await Promise.all([
+  const [names, programmeNames, partnerNames] = await Promise.all([
     resolveDisplayNames(snap.docs.map((d) => d.get('assignedToUid') as unknown)),
     resolveProgrammeNames(snap.docs.map((d) => d.get('programmeInterestId') as unknown)),
+    resolvePartnerNames(snap.docs.map((d) => d.get('partnerId') as unknown)),
   ]);
-  return snap.docs.map((doc) => toLead(doc, names, programmeNames));
+  return snap.docs.map((doc) => toLead(doc, names, programmeNames, partnerNames));
 }
 
 /** Single-lead read for /leads/[leadId] (Doc 16 S11), row-scoped like listLeads. */
@@ -88,11 +108,50 @@ export async function getLead(session: Session, leadId: string): Promise<Lead | 
   const assignedToUid = typeof data.assignedToUid === 'string' ? data.assignedToUid : null;
   if (isLeadRowScoped(session.role, assignedToUid, session.uid)) return null;
 
-  const [names, programmeNames] = await Promise.all([
+  const [names, programmeNames, partnerNames] = await Promise.all([
     resolveDisplayNames([assignedToUid]),
     resolveProgrammeNames([data.programmeInterestId]),
+    resolvePartnerNames([data.partnerId]),
   ]);
-  return toLead(snap, names, programmeNames);
+  return toLead(snap, names, programmeNames, partnerNames);
+}
+
+/**
+ * Doc 25 §4 — a Growth Partner's own referred leads, strictly row-scoped by
+ * `partnerId`. There is no staff-role branch here: this function is only
+ * ever called with a `PartnerSession`, never a staff `Session`.
+ */
+export async function listPartnerLeads(partnerId: string): Promise<Lead[]> {
+  const snap = await adminDb()
+    .collection('leads')
+    .where('partnerId', '==', partnerId)
+    .where('deletedAt', '==', null)
+    .orderBy('updatedAt', 'desc')
+    .limit(LEADS_SCAN_CAP)
+    .get();
+
+  const [names, programmeNames, partnerNames] = await Promise.all([
+    resolveDisplayNames(snap.docs.map((d) => d.get('assignedToUid') as unknown)),
+    resolveProgrammeNames(snap.docs.map((d) => d.get('programmeInterestId') as unknown)),
+    resolvePartnerNames([partnerId]),
+  ]);
+  return snap.docs.map((doc) => toLead(doc, names, programmeNames, partnerNames));
+}
+
+/** Single-lead read for a partner's own lead, row-scoped by `partnerId` — returns
+ * null (never another partner's data, per Doc 25 §16) if the lead isn't theirs. */
+export async function getPartnerLead(partnerId: string, leadId: string): Promise<Lead | null> {
+  const snap = await adminDb().collection('leads').doc(leadId).get();
+  if (!snap.exists) return null;
+  const data = snap.data();
+  if (!data || data.deletedAt !== null || data.partnerId !== partnerId) return null;
+
+  const [names, programmeNames, partnerNames] = await Promise.all([
+    resolveDisplayNames([data.assignedToUid]),
+    resolveProgrammeNames([data.programmeInterestId]),
+    resolvePartnerNames([partnerId]),
+  ]);
+  return toLead(snap, names, programmeNames, partnerNames);
 }
 
 export async function listLeadActivities(leadId: string): Promise<LeadActivity[]> {

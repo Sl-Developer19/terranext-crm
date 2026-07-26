@@ -30,7 +30,7 @@ import { deleteLead } from '../actions/delete-lead';
 import { logLeadActivity } from '../actions/log-lead-activity';
 import { updateLead } from '../actions/update-lead';
 import { LEAD_ACTIVITY_TYPES, LEAD_STAGES, type Lead, type LeadActivity } from '../schema';
-import { LEAD_STAGE_BADGE, LEAD_STAGE_LABELS } from '../stage-labels';
+import { LEAD_STAGE_BADGE, LEAD_STAGE_LABELS, LEAD_TYPE_LABELS } from '../stage-labels';
 
 const ACTIVITY_TYPE_LABELS: Record<(typeof LEAD_ACTIVITY_TYPES)[number], string> = {
   call: 'Call',
@@ -260,9 +260,19 @@ export function LeadDetailView({
               <div>{lead.email ?? '—'}</div>
             </div>
             <div>
+              <div className="text-xs text-muted-foreground">Lead type</div>
+              <div>{lead.leadType ? LEAD_TYPE_LABELS[lead.leadType] : '—'}</div>
+            </div>
+            <div>
               <div className="text-xs text-muted-foreground">Programme interest</div>
               <div>{lead.programmeInterestName ?? '—'}</div>
             </div>
+            {lead.partnerName ? (
+              <div>
+                <div className="text-xs text-muted-foreground">Referred by</div>
+                <div>{lead.partnerName}</div>
+              </div>
+            ) : null}
             <div>
               <div className="text-xs text-muted-foreground">Source</div>
               <div className="capitalize">{lead.source}</div>

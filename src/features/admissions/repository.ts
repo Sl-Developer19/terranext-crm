@@ -151,6 +151,10 @@ export async function convertLeadRecord(record: ConvertLeadRecord): Promise<Conv
     // both mint an ID. The first commit wins; the second sees the back-link.
     if (asStringOrNull(leadSnap.get('participantId'))) throw new Error('already_converted');
 
+    // Doc 25: the referral relationship inherits from the lead onto every
+    // downstream record — the reward engine (slice 4) reads it from here.
+    const partnerId = asStringOrNull(leadSnap.get('partnerId'));
+
     const participantId = await reserveParticipantId(tx, now.getFullYear());
     const participantRef = db.collection('participants').doc(participantId);
     const enrolmentRef = participantRef.collection('enrolments').doc();
@@ -159,6 +163,7 @@ export async function convertLeadRecord(record: ConvertLeadRecord): Promise<Conv
       schemaVersion: 1,
       branchId: record.branchId,
       leadId: record.leadId,
+      partnerId,
       personal: {
         fullName: record.personal.fullName,
         dob: new Date(record.personal.dob),

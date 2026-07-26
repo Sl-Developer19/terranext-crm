@@ -1,4 +1,4 @@
-import { LayoutDashboard, UserRound } from 'lucide-react';
+import { LayoutDashboard, Sparkles, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 /**
@@ -15,5 +15,6 @@ export interface PartnerNavItem {
 
 export const PARTNER_NAV_ITEMS: PartnerNavItem[] = [
   { label: 'Dashboard', href: '/partner/dashboard', icon: LayoutDashboard },
+  { label: 'My Leads', href: '/partner/leads', icon: Sparkles },
   { label: 'Profile', href: '/partner/profile', icon: UserRound },
 ];

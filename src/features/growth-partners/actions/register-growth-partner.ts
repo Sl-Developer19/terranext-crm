@@ -65,6 +65,7 @@ export async function registerGrowthPartner(
       authUid: null,
       approvedAt: null,
       approvedBy: null,
+      lastLoginAt: null,
       createdAt: now,
       createdBy: session.uid,
       updatedAt: now,

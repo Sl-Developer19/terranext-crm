@@ -27,6 +27,15 @@ export interface AuthSecurityConfig {
     name: string;
     maxAgeMs: number;
   };
+  /**
+   * Growth Partner session cookie (Doc 25, ADR-014) — a separate name from
+   * `sessionCookie` so a staff and a partner session never collide in the
+   * same browser.
+   */
+  partnerSessionCookie: {
+    name: string;
+    maxAgeMs: number;
+  };
 }
 
 /**

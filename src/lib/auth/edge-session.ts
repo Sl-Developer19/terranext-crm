@@ -73,6 +73,19 @@ async function getCerts(): Promise<Record<string, string>> {
 export interface EdgeSession {
   uid: string;
   role: string | null;
+  /** Growth Partner claims (Doc 25, ADR-014) — absent on every staff token. */
+  actorType: string | null;
+  partnerId: string | null;
+}
+
+function toEdgeSession(payload: Record<string, unknown>): EdgeSession | null {
+  if (typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
+  return {
+    uid: payload.sub,
+    role: typeof payload.role === 'string' ? payload.role : null,
+    actorType: typeof payload.actorType === 'string' ? payload.actorType : null,
+    partnerId: typeof payload.partnerId === 'string' ? payload.partnerId : null,
+  };
 }
 
 export async function verifySessionCookieOnEdge(
@@ -82,11 +95,7 @@ export async function verifySessionCookieOnEdge(
   try {
     if (env().NEXT_PUBLIC_USE_EMULATORS) {
       const payload = decodeJwtPayloadUnsafe(sessionCookie);
-      if (!payload || typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
-      return {
-        uid: payload.sub,
-        role: typeof payload.role === 'string' ? payload.role : null,
-      };
+      return payload ? toEdgeSession(payload) : null;
     }
 
     const { kid } = decodeProtectedHeader(sessionCookie);
@@ -102,11 +111,7 @@ export async function verifySessionCookieOnEdge(
       audience: projectId,
     });
 
-    if (typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
-    return {
-      uid: payload.sub,
-      role: typeof payload.role === 'string' ? payload.role : null,
-    };
+    return toEdgeSession(payload);
   } catch {
     return null;
   }

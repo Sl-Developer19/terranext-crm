@@ -23,4 +23,8 @@ export const AUTH_SECURITY = {
     name: '__session',
     maxAgeMs: 5 * DAY_MS,
   },
+  partnerSessionCookie: {
+    name: '__partner_session',
+    maxAgeMs: 5 * DAY_MS,
+  },
 } as const satisfies AuthSecurityConfig;

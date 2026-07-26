@@ -29,7 +29,16 @@ interface LoginResponseBody {
   error?: { message?: string };
 }
 
-export function LoginForm() {
+export function LoginForm({
+  endpoint = '/api/auth/login',
+  defaultRedirect = '/dashboard',
+  showForgotPassword = true,
+}: {
+  /** Doc 25, ADR-014: the partner portal posts to a different endpoint. */
+  endpoint?: string;
+  defaultRedirect?: string;
+  showForgotPassword?: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -52,7 +61,7 @@ export function LoginForm() {
   const onSubmit = async (values: LoginInput) => {
     setFormError(null);
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
@@ -61,7 +70,7 @@ export function LoginForm() {
 
       if (response.ok && body?.ok) {
         const next = searchParams.get('next');
-        router.replace(next && next.startsWith('/') ? next : '/dashboard');
+        router.replace(next && next.startsWith('/') ? next : defaultRedirect);
         router.refresh();
         return;
       }
@@ -108,12 +117,14 @@ export function LoginForm() {
           <Label htmlFor="password" required>
             Password
           </Label>
-          <Link
-            href="/forgot-password"
-            className="text-xs text-muted-foreground hover:text-gold hover:underline"
-          >
-            Forgot password?
-          </Link>
+          {showForgotPassword ? (
+            <Link
+              href="/forgot-password"
+              className="text-xs text-muted-foreground hover:text-gold hover:underline"
+            >
+              Forgot password?
+            </Link>
+          ) : null}
         </div>
         <Input
           id="password"

@@ -32,6 +32,16 @@ export const decideGrowthPartnerSchema = z
 
 export type DecideGrowthPartnerInput = z.infer<typeof decideGrowthPartnerSchema>;
 
+export const updateOwnProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(2, 'Enter your name').max(120),
+    phone: z.string().trim().regex(E164, 'Enter phone in E.164 format, e.g. +919876543210'),
+    organizationName: z.string().trim().max(160).optional().or(z.literal('')),
+  })
+  .strict();
+
+export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileSchema>;
+
 export const setGrowthPartnerStatusSchema = z
   .object({
     partnerId: z.string().min(1),

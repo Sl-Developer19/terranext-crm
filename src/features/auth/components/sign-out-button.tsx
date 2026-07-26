@@ -8,16 +8,23 @@ import { Button } from '@/components/ui/button';
 
 // No client-SDK signOut: under ADR-013 the browser Firebase SDK is never
 // signed in — the HttpOnly session cookie is the only auth state to clear.
-export function SignOutButton() {
+export function SignOutButton({
+  endpoint = '/api/session',
+  redirectTo = '/login',
+}: {
+  /** Doc 25, ADR-014: the partner portal tears down its own cookie. */
+  endpoint?: string;
+  redirectTo?: string;
+}) {
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
 
   const handleSignOut = async () => {
     setPending(true);
     try {
-      await fetch('/api/session', { method: 'DELETE' });
+      await fetch(endpoint, { method: 'DELETE' });
     } finally {
-      router.replace('/login');
+      router.replace(redirectTo);
       router.refresh();
     }
   };

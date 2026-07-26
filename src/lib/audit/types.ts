@@ -59,7 +59,9 @@ export interface AuditChange {
 
 export interface AuditEntryInput {
   actorUid: string;
-  actorRole: StaffRole | 'system';
+  /** 'growth_partner' covers partner-initiated writes (Doc 25, ADR-014) — a
+   * partner is never a StaffRole, but its actions are audited the same way. */
+  actorRole: StaffRole | 'system' | 'growth_partner';
   action: AuditAction;
   entityType: AuditEntityType;
   entityId: string;

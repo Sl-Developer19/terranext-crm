@@ -31,6 +31,20 @@ service cloud.firestore {
       return hasRole('founder') || hasRole('system_admin');
     }
 
+    // isPartner(): a Growth Partner token — deliberately NOT `isStaff()`
+    // (ADR-014). A partner token carries no `role` claim, so it never
+    // satisfies hasRole()/isStaff() and can never reach a bare
+    // `isStaff()`-gated collection such as `settings`.
+    function isPartner() {
+      return request.auth != null
+        && request.auth.token.actorType == 'growth_partner'
+        && request.auth.token.partnerId is string;
+    }
+
+    function isOwnPartnerRecord(partnerId) {
+      return isPartner() && request.auth.token.partnerId == partnerId;
+    }
+
     // ── Login-security ledger (Doc 10 §1 / ADR-013): server-only forever. ──
     // Written exclusively by the Admin SDK from /api/auth/login; no client
     // (any role, any claim) may ever read attempt counters, lockout state,
@@ -97,7 +111,7 @@ service cloud.firestore {
 
 // <<GENERATED_RBAC_START>>
     // ── GENERATED RBAC predicates (condition C-1) ──────────────────────────
-    // Source: lib/rbac/permissions.ts · map-version: CA4F1B98
+    // Source: lib/rbac/permissions.ts · map-version: E75D506D
     // DO NOT EDIT this block manually — run scripts/generate-firestore-predicates.mts
     // and commit the result. CI will fail if this block has drifted.
     //
@@ -560,6 +574,54 @@ service cloud.firestore {
     function can_colleges_configure() {
       return isStaff() && request.auth.token.role in ['founder'];
     }
+    function can_growthPartners_view() {
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'finance'];
+    }
+    function can_growthPartners_create() {
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager'];
+    }
+    function can_growthPartners_update() {
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
+    }
+    function can_growthPartners_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_growthPartners_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_growthPartners_approve() {
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
+    }
+    function can_growthPartners_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_growthPartners_configure() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_rewards_view() {
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'finance'];
+    }
+    function can_rewards_create() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_rewards_update() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_rewards_delete() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_rewards_assign() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_rewards_approve() {
+      return isStaff() && request.auth.token.role in ['founder', 'finance'];
+    }
+    function can_rewards_export() {
+      return isStaff() && request.auth.token.role in ['founder'];
+    }
+    function can_rewards_configure() {
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
+    }
     function can_users_view() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
@@ -887,6 +949,25 @@ service cloud.firestore {
         allow read: if can_participants_view();
         allow write: if false; // Admin SDK only (signed-URL flow, Doc 10 §6)
       }
+    }
+
+    // ── growthPartners/* (Doc 25 §3/§5, ADR-014) ────────────────────────────
+    // Read: staff with `growthPartners:view` (org-wide oversight, no row
+    //   scope) OR the partner reading their own profile. Write: Admin SDK
+    //   only — registration/approval/status changes mint Firebase Auth users
+    //   and custom claims, which no rule can safely express.
+    match /growthPartners/{partnerId} {
+      allow read: if can_growthPartners_view() || isOwnPartnerRecord(partnerId);
+      allow write: if false; // Admin SDK only
+    }
+
+    // ── rewardRules/* (Doc 25 §3) ───────────────────────────────────────────
+    // Read: staff with `rewards:view` (oversight) OR any authenticated
+    //   partner (a partner is entitled to know how rewards are calculated).
+    //   Write: Admin SDK only — `rewards:configure`, System Admin only.
+    match /rewardRules/{ruleId} {
+      allow read: if can_rewards_view() || isPartner();
+      allow write: if false; // Admin SDK only
     }
 
     // Deny-all default. Every business collection must add an explicit block

@@ -7,6 +7,7 @@ import {
   ClipboardList,
   FileBadge,
   GraduationCap,
+  HeartHandshake,
   LayoutDashboard,
   Mail,
   MessageSquareText,
@@ -122,6 +123,18 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Placements', href: '/placements', icon: Percent, permission: view('placements') },
       { label: 'Employers', href: '/employers', icon: Building2, permission: view('employers') },
       { label: 'Alumni', href: '/alumni', icon: GraduationCap, permission: view('alumni') },
+    ],
+  },
+  {
+    label: 'Growth Partners',
+    items: [
+      {
+        label: 'Partners',
+        href: '/growth-partners',
+        icon: HeartHandshake,
+        permission: view('growthPartners'),
+      },
+      { label: 'Reward Rules', href: '/rewards', icon: Percent, permission: view('rewards') },
     ],
   },
   {

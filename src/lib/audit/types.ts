@@ -45,7 +45,12 @@ export type AuditEntityType =
   | 'communication'
   | 'college'
   | 'report'
-  | 'settings';
+  | 'settings'
+  | 'growth_partner'
+  | 'reward_rule'
+  | 'reward_ledger_entry'
+  | 'wallet_transaction'
+  | 'payout_request';
 
 export interface AuditChange {
   before: unknown;

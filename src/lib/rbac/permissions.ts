@@ -36,6 +36,10 @@ export const MODULES = [
   'communications',
   'reports',
   'colleges',
+  /** Growth Partner identity, registration, and approval (Doc 25, ADR-014). */
+  'growthPartners',
+  /** Reward rules, ledger, wallet, and payouts (Doc 25). */
+  'rewards',
   'users',
   'roles',
   'audit',
@@ -126,6 +130,10 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     // admin-only override, so it can never be confused with ops_manager's
     // routine 'alumni:create/update' (engagement recording).
     ...p('alumni', 'view', 'configure'),
+    // Growth Partner onboarding (Doc 25): System Admin registers and approves
+    // (mints the partner's account) and activates/deactivates post-approval.
+    ...p('growthPartners', 'view', 'create', 'update', 'approve'),
+    ...p('rewards', 'view', 'configure'),
     ...p('users', 'view', 'create', 'update'),
     ...p('roles', 'view', 'configure'),
     ...p('audit', 'view', 'export'),
@@ -153,6 +161,11 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('communications', 'view', 'create'),
     ...p('reports', 'view', 'export'),
     ...p('colleges', 'view', 'create', 'update'),
+    // "Admission Team" and "Operations Admin" from the GPMS brief both map to
+    // ops_manager (Doc 25 §2) — this role registers partners and reviews
+    // their referred leads through the existing leads:view/assign grants.
+    ...p('growthPartners', 'view', 'create'),
+    ...p('rewards', 'view'),
   ],
   consultant: [
     ...p('dashboard', 'view'),
@@ -198,6 +211,11 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('fees', 'view', 'create', 'update', 'export'),
     ...p('communications', 'view', 'create'),
     ...p('reports', 'view', 'export'),
+    // Reward payouts are money leaving the organisation (Doc 25 §4) — Finance
+    // reviews the ledger and approves payout requests, same separation of
+    // duties as fees:approve above.
+    ...p('growthPartners', 'view'),
+    ...p('rewards', 'view', 'approve'),
   ],
   placement: [
     ...p('dashboard', 'view'),

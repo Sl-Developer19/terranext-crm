@@ -28,10 +28,21 @@ function toIsoOrNull(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
-/** Names for the ref ids actually on this page — never a full collection scan. */
-async function refNames(
+interface RefContact {
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+/**
+ * Name + contact details for the ref ids actually on this page — never a
+ * full collection scan. Mirrors the field paths `dispatch.ts`'s
+ * `resolveAddress` reads, so what the log displays matches what the worker
+ * actually sends to.
+ */
+async function refContacts(
   entries: { refType: RefType; refId: string }[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, RefContact>> {
   const db = adminDb();
   const idsFor = (refType: RefType) =>
     [...new Set(entries.filter((e) => e.refType === refType).map((e) => e.refId))].filter(
@@ -48,18 +59,30 @@ async function refNames(
     Promise.all(staffIds.map((id) => db.collection('users').doc(id).get())),
   ]);
 
-  const names = new Map<string, string>();
+  const contacts = new Map<string, RefContact>();
   for (const doc of leadDocs) {
-    names.set(`lead:${doc.id}`, asString(doc.get('name')));
+    contacts.set(`lead:${doc.id}`, {
+      name: asString(doc.get('name')),
+      email: asStringOrNull(doc.get('email')),
+      phone: asStringOrNull(doc.get('phone')),
+    });
   }
   for (const doc of participantDocs) {
     const personal = (doc.get('personal') ?? {}) as Record<string, unknown>;
-    names.set(`participant:${doc.id}`, asString(personal.fullName));
+    contacts.set(`participant:${doc.id}`, {
+      name: asString(personal.fullName),
+      email: asStringOrNull(personal.email),
+      phone: asStringOrNull(personal.phone),
+    });
   }
   for (const doc of staffDocs) {
-    names.set(`staff:${doc.id}`, asString(doc.get('displayName')));
+    contacts.set(`staff:${doc.id}`, {
+      name: asString(doc.get('displayName')),
+      email: asStringOrNull(doc.get('email')),
+      phone: null,
+    });
   }
-  return names;
+  return contacts;
 }
 
 export async function findCommunications(): Promise<Communication[]> {
@@ -68,24 +91,35 @@ export async function findCommunications(): Promise<Communication[]> {
     .orderBy('createdAt', 'desc')
     .limit(500)
     .get();
-  const names = await refNames(
-    snap.docs.map((doc) => ({
+  // Filtered in memory rather than via `.where('deletedAt', '==', null)`:
+  // every row created before the secure-delete feature never had a
+  // `deletedAt` field at all, and Firestore's `== null` equality filter does
+  // not match a field that is entirely absent — a Firestore-level filter
+  // would have silently hidden the whole pre-existing log. `!doc.get(...)`
+  // treats "absent" and "explicit null" the same, correctly, with no
+  // migration required.
+  const visibleDocs = snap.docs.filter((doc) => !doc.get('deletedAt'));
+  const contacts = await refContacts(
+    visibleDocs.map((doc) => ({
       refType: (asString(doc.get('refType')) || 'lead') as RefType,
       refId: asString(doc.get('refId')),
     })),
   );
 
-  return snap.docs.map((doc) => {
+  return visibleDocs.map((doc) => {
     const data = doc.data();
     const refType = (asString(data.refType) || 'lead') as RefType;
     const refId = asString(data.refId);
+    const contact = contacts.get(`${refType}:${refId}`);
     return {
       id: doc.id,
       channel: (asString(data.channel) || 'email') as Channel,
       direction: (asString(data.direction) || 'outbound') as Direction,
       refType,
       refId,
-      refName: names.get(`${refType}:${refId}`) || refId,
+      refName: contact?.name || refId,
+      refEmail: contact?.email ?? null,
+      refPhone: contact?.phone ?? null,
       templateKey: asStringOrNull(data.templateKey),
       subject: asStringOrNull(data.subject),
       bodyPreview: asString(data.bodyPreview),

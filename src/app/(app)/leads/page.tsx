@@ -13,6 +13,7 @@ export default async function LeadsPage() {
   const session = await requirePermission('leads:view');
   const leads = await listLeads(session);
   const canCreate = can(session.role, 'leads:create');
+  const canDelete = can(session.role, 'leads:delete');
 
   return (
     <div className="space-y-6">
@@ -29,7 +30,7 @@ export default async function LeadsPage() {
       ) : null}
       <Card>
         <CardContent className="p-0">
-          <LeadsTable leads={leads} />
+          <LeadsTable leads={leads} canDelete={canDelete} />
         </CardContent>
       </Card>
     </div>

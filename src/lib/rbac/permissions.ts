@@ -110,7 +110,17 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('dashboard', 'view'),
     ...p('programmes', 'configure'),
     ...p('certificates', 'configure'),
-    ...p('communications', 'configure'),
+    // Narrow, deliberate exception (owner decision, 2026-07-25): the secure
+    // delete feature restricts destructive lead/communication removal to
+    // Founder + System Administrator. Founder already holds these via
+    // ALL_PERMISSIONS; System Administrator needs `view` too, or the guarded
+    // pages (`requirePermission('leads:view')` / `('communications:view')`)
+    // would redirect them before the delete affordance is ever reachable.
+    // This does not restore system_admin's other business powers — see the
+    // ADR-011 test in permissions.test.ts, which pins the scope to exactly
+    // view + delete on these two modules.
+    ...p('leads', 'view', 'delete'),
+    ...p('communications', 'view', 'configure', 'delete'),
     // The manual-alumni-grant override (BR-05) is system_admin only — kept
     // on 'configure', the verb this role already uses for every other
     // admin-only override, so it can never be confused with ops_manager's
@@ -123,7 +133,9 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
   ],
   ops_manager: [
     ...p('dashboard', 'view', 'export'),
-    ...p('leads', 'view', 'create', 'update', 'delete', 'assign', 'export'),
+    // 'delete' removed (owner decision, 2026-07-25): lead soft-deletion is now
+    // Founder/System-Administrator only, not an ops_manager power.
+    ...p('leads', 'view', 'create', 'update', 'assign', 'export'),
     ...p('counselling', 'view'),
     ...p('admissions', 'view', 'create'),
     ...p('participants', 'view', 'create', 'update', 'export'),

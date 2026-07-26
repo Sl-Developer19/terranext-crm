@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { RecordCommunications } from '@/features/communications/components/record-communications';
 import type { Communication } from '@/features/communications/schema';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -25,6 +26,7 @@ import { Separator } from '@/components/ui/separator';
 import { MessageSquareText } from 'lucide-react';
 
 import { assignLead } from '../actions/assign-lead';
+import { deleteLead } from '../actions/delete-lead';
 import { logLeadActivity } from '../actions/log-lead-activity';
 import { updateLead } from '../actions/update-lead';
 import { LEAD_ACTIVITY_TYPES, LEAD_STAGES, type Lead, type LeadActivity } from '../schema';
@@ -51,6 +53,7 @@ export function LeadDetailView({
   consultants,
   canUpdate,
   canAssign,
+  canDelete = false,
 }: {
   lead: Lead;
   activities: LeadActivity[];
@@ -59,10 +62,29 @@ export function LeadDetailView({
   consultants: Array<{ uid: string; displayName: string }>;
   canUpdate: boolean;
   canAssign: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [stagePending, setStagePending] = React.useState(false);
   const [assignPending, setAssignPending] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deletePending, setDeletePending] = React.useState(false);
+
+  const confirmDelete = async () => {
+    setDeletePending(true);
+    try {
+      const outcome = await deleteLead({ leadId: lead.id });
+      if (!outcome.ok) {
+        toast.error(outcome.error.message);
+        return;
+      }
+      toast.success(`${lead.name} was deleted`);
+      router.push('/leads');
+    } finally {
+      setDeletePending(false);
+      setDeleteOpen(false);
+    }
+  };
 
   const form = useForm<ActivityFormValues>({
     defaultValues: { type: 'note', summary: '', nextFollowUpAt: '' },
@@ -300,9 +322,33 @@ export function LeadDetailView({
                 <div>{lead.assignedToName ?? 'Unassigned'}</div>
               </div>
             )}
+            {canDelete ? (
+              <>
+                <Separator />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Delete lead
+                </Button>
+              </>
+            ) : null}
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete this lead?"
+        consequence="Are you sure you want to delete this record? This action can only be performed by the Founder."
+        confirmLabel="Delete"
+        variant="destructive"
+        pending={deletePending}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

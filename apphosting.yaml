@@ -52,6 +52,16 @@ env:
       - BUILD
       - RUNTIME
 
+  # Origins allowed to POST to /api/createLead (public-intake.ts). Only
+  # RUNTIME is needed — this is read server-side, not inlined into client
+  # bundles. Includes the App Hosting default backend URL alongside the
+  # custom domains since no custom domain is mapped to terranext-production
+  # yet.
+  - variable: PUBLIC_INTAKE_ORIGINS
+    value: "https://terranextglobal.com,https://www.terranextglobal.com,https://terranext-production--terranextglobal.asia-southeast1.hosted.app"
+    availability:
+      - RUNTIME
+
   # Grant access to secrets in Cloud Secret Manager.
   # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.
   # See https://firebase.google.com/docs/app-hosting/configure#secret-parameters

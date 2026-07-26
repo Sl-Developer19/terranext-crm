@@ -83,6 +83,15 @@ export const logLeadActivitySchema = z
 
 export type LogLeadActivityInput = z.infer<typeof logLeadActivitySchema>;
 
+/** Soft-delete only (ADR-009) — Founder/System Administrator only (`leads:delete`). */
+export const deleteLeadSchema = z
+  .object({
+    leadId: z.string().min(1),
+  })
+  .strict();
+
+export type DeleteLeadInput = z.infer<typeof deleteLeadSchema>;
+
 export interface Lead {
   id: string;
   name: string;

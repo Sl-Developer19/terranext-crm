@@ -1,9 +1,13 @@
 'use client';
 
 import { MessageSquare } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
+import { toast } from 'sonner';
 
 import { StatusBadge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+import { deleteCommunication } from '../actions/delete-communication';
 import { channelLabel, filterCommunications, statusLabel, statusTone } from '../logic';
 import {
   CHANNELS,
@@ -34,11 +39,41 @@ import {
 
 const ALL = 'all';
 
-/** S41 global log with channel/status/text filters (Doc 16). */
-export function CommunicationsLog({ rows }: { rows: Communication[] }) {
+/**
+ * S41 global log with channel/status/text filters (Doc 16). `canDelete` only
+ * toggles the affordance — `deleteCommunication` re-checks
+ * `communications:delete` server-side regardless of what this renders.
+ */
+export function CommunicationsLog({
+  rows,
+  canDelete = false,
+}: {
+  rows: Communication[];
+  canDelete?: boolean;
+}) {
+  const router = useRouter();
   const [search, setSearch] = React.useState('');
   const [channel, setChannel] = React.useState<Channel | typeof ALL>(ALL);
   const [status, setStatus] = React.useState<CommStatus | typeof ALL>(ALL);
+  const [deleteTarget, setDeleteTarget] = React.useState<Communication | null>(null);
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setPendingId(deleteTarget.id);
+    try {
+      const outcome = await deleteCommunication({ communicationId: deleteTarget.id });
+      if (!outcome.ok) {
+        toast.error(outcome.error.message);
+        return;
+      }
+      toast.success('Message deleted');
+      router.refresh();
+    } finally {
+      setPendingId(null);
+      setDeleteTarget(null);
+    }
+  };
 
   const visible = React.useMemo(
     () =>
@@ -121,6 +156,7 @@ export function CommunicationsLog({ rows }: { rows: Communication[] }) {
               <TableHead>Message</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>When</TableHead>
+              {canDelete ? <TableHead className="text-right">Actions</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -132,6 +168,11 @@ export function CommunicationsLog({ rows }: { rows: Communication[] }) {
                     {row.refType === 'lead' ? 'Lead' : 'Participant'} ·{' '}
                     {row.direction === 'inbound' ? 'Received' : 'Sent'}
                   </div>
+                  {row.refEmail || row.refPhone ? (
+                    <div className="text-xs text-muted-foreground">
+                      {[row.refEmail, row.refPhone].filter(Boolean).join(' · ')}
+                    </div>
+                  ) : null}
                 </TableCell>
                 <TableCell className="text-sm">{channelLabel(row.channel)}</TableCell>
                 <TableCell className="max-w-md">
@@ -144,11 +185,34 @@ export function CommunicationsLog({ rows }: { rows: Communication[] }) {
                 <TableCell className="text-sm text-muted-foreground">
                   {row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}
                 </TableCell>
+                {canDelete ? (
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pendingId === row.id}
+                      onClick={() => setDeleteTarget(row)}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                ) : null}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this message?"
+        consequence="Are you sure you want to delete this record? This action can only be performed by the Founder."
+        confirmLabel="Delete"
+        variant="destructive"
+        pending={pendingId === deleteTarget?.id}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

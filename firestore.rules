@@ -97,7 +97,7 @@ service cloud.firestore {
 
 // <<GENERATED_RBAC_START>>
     // ── GENERATED RBAC predicates (condition C-1) ──────────────────────────
-    // Source: lib/rbac/permissions.ts · map-version: B5F5C2BE
+    // Source: lib/rbac/permissions.ts · map-version: CA4F1B98
     // DO NOT EDIT this block manually — run scripts/generate-firestore-predicates.mts
     // and commit the result. CI will fail if this block has drifted.
     //
@@ -129,7 +129,7 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_leads_view() {
-      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'consultant'];
     }
     function can_leads_create() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
@@ -138,7 +138,7 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant'];
     }
     function can_leads_delete() {
-      return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_leads_assign() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager'];
@@ -489,7 +489,7 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_communications_view() {
-      return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
     }
     function can_communications_create() {
       return isStaff() && request.auth.token.role in ['founder', 'ops_manager', 'consultant', 'coordinator', 'trainer', 'finance', 'placement'];
@@ -498,7 +498,7 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['founder'];
     }
     function can_communications_delete() {
-      return isStaff() && request.auth.token.role in ['founder'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
     }
     function can_communications_assign() {
       return isStaff() && request.auth.token.role in ['founder'];

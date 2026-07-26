@@ -12,6 +12,7 @@ import {
   type Result,
 } from '@/lib/utils/result';
 
+import { dispatchQueuedCommunications } from '../dispatch';
 import { toBodyPreview } from '../logic';
 import { createCommunicationRecord, refExists } from '../repository';
 import {
@@ -32,9 +33,11 @@ function fieldErrors(issues: { path: (string | number)[]; message: string }[]) {
 
 /**
  * FR-10.3 log-before-send: the doc lands as `queued` and the provider hand-off
- * is a separate step. No email/SMS provider is configured in this environment
- * yet, so messages stay `queued` until the dispatch worker exists — which is
- * exactly the state the log is designed to make visible rather than hide.
+ * is a separate step. The scheduled worker (Doc 19 §4) is the durable sweep —
+ * it retries with backoff and is what production relies on — but this action
+ * also attempts an immediate dispatch pass so a sender sees the true outcome
+ * without waiting on Cloud Scheduler, and so this call doubles as a recovery
+ * sweep for anything left over from a period the scheduled job wasn't reachable.
  */
 export async function sendCommunication(
   input: SendCommunicationInput,
@@ -84,6 +87,11 @@ export async function sendCommunication(
       changes: { status: { before: null, after: 'queued' } },
       context: { feature: 'communications' },
     });
+
+    // Best-effort immediate delivery. A failure here must never turn an
+    // already-recorded, already-audited message into an error response — the
+    // row stays `queued` and the scheduled worker retries it regardless.
+    await dispatchQueuedCommunications().catch(() => undefined);
 
     return ok({ communicationId });
   } catch {

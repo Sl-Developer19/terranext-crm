@@ -2,6 +2,7 @@ import 'server-only';
 
 import { adminDb } from '@/lib/firebase/admin';
 
+import { dispatchQueuedCommunications } from './dispatch';
 import { toBodyPreview } from './logic';
 import type { Channel, RefType } from './schema';
 import { findTemplate } from './templates';
@@ -65,6 +66,16 @@ export async function enqueueTemplatedMessage(options: {
     updatedAt: now,
     updatedBy: 'system',
   });
+
+  // Fire-and-forget: the caller (lead creation, certificate issuance) must
+  // not wait on a provider round-trip to finish its own request. The
+  // scheduled worker (Doc 19 §4) still owns retry/backoff for anything this
+  // attempt misses; this just closes the gap between "queued" and the next
+  // scheduled sweep for the common case.
+  // eslint-disable-next-line no-console
+  dispatchQueuedCommunications().catch((error) =>
+    console.error('enqueueTemplatedMessage: immediate dispatch attempt failed', error),
+  );
 
   return 'queued';
 }

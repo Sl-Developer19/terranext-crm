@@ -113,10 +113,20 @@ describe('RBAC permission map', () => {
     }
   });
 
-  it('system_admin runs the platform but holds no business powers (ADR-011)', () => {
+  it('system_admin runs the platform and holds a narrow, explicit delete-feature exception (ADR-011 + owner decision 2026-07-25)', () => {
     expect(can('system_admin', 'users:create')).toBe(true);
     expect(can('system_admin', 'roles:configure')).toBe(true);
-    expect(can('system_admin', 'leads:view')).toBe(false);
+    // Scoped exception: view + delete on leads/communications only, so the
+    // Founder/System-Administrator-only secure delete feature is reachable
+    // through the normal guarded pages. This must not widen into the other
+    // business powers ADR-011 withholds from system_admin.
+    expect(can('system_admin', 'leads:view')).toBe(true);
+    expect(can('system_admin', 'leads:delete')).toBe(true);
+    expect(can('system_admin', 'leads:create')).toBe(false);
+    expect(can('system_admin', 'leads:update')).toBe(false);
+    expect(can('system_admin', 'communications:view')).toBe(true);
+    expect(can('system_admin', 'communications:delete')).toBe(true);
+    expect(can('system_admin', 'communications:create')).toBe(false);
     expect(can('system_admin', 'fees:approve')).toBe(false);
     expect(can('system_admin', 'admissions:create')).toBe(false);
   });
@@ -147,11 +157,11 @@ describe('RBAC permission map', () => {
     expect(visibleModules('trainer')).not.toContain('fees');
   });
 
-  it('among non-super roles, delete is limited to lead soft-archival by ops (ADR-009)', () => {
+  it('among non-super roles, only system_admin may soft-delete leads or communications (ADR-009, owner decision 2026-07-25)', () => {
     for (const role of NON_SUPER_ROLES) {
-      const deletes = ROLE_PERMISSIONS[role].filter((perm) => perm.endsWith(':delete'));
-      if (role === 'ops_manager') {
-        expect(deletes).toEqual(['leads:delete']);
+      const deletes = [...ROLE_PERMISSIONS[role].filter((perm) => perm.endsWith(':delete'))].sort();
+      if (role === 'system_admin') {
+        expect(deletes).toEqual(['communications:delete', 'leads:delete']);
       } else {
         expect(deletes, role).toEqual([]);
       }

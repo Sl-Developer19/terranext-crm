@@ -81,6 +81,15 @@ export const communicationFilterSchema = z
   .strict();
 export type CommunicationFilter = z.infer<typeof communicationFilterSchema>;
 
+/** Soft-delete only (ADR-009) — Founder/System Administrator only (`communications:delete`). */
+export const deleteCommunicationSchema = z
+  .object({
+    communicationId: z.string().min(1),
+  })
+  .strict();
+
+export type DeleteCommunicationInput = z.infer<typeof deleteCommunicationSchema>;
+
 /* ── Read models ───────────────────────────────────────────────────────── */
 
 export interface Communication {
@@ -90,6 +99,9 @@ export interface Communication {
   refType: RefType;
   refId: string;
   refName: string;
+  /** Null for a staff ref (no phone) or when the underlying record has none on file. */
+  refEmail: string | null;
+  refPhone: string | null;
   templateKey: string | null;
   subject: string | null;
   bodyPreview: string;

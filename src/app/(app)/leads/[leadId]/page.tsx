@@ -18,6 +18,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
 
   const canUpdate = can(session.role, 'leads:update');
   const canAssign = can(session.role, 'leads:assign');
+  const canDelete = can(session.role, 'leads:delete');
   const canViewComms = can(session.role, 'communications:view');
   const [activities, consultants, communications] = await Promise.all([
     listLeadActivities(leadId),
@@ -35,6 +36,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ lea
         consultants={consultants}
         canUpdate={canUpdate}
         canAssign={canAssign}
+        canDelete={canDelete}
       />
     </div>
   );

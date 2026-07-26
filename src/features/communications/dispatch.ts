@@ -125,47 +125,62 @@ export async function dispatchQueuedCommunications(
     const refId = asString(doc.get('refId'));
     const attempts = typeof doc.get('attempts') === 'number' ? (doc.get('attempts') as number) : 0;
 
-    // The body is held transiently for exactly this moment; if it is gone the
-    // preview is all that survives, and sending a truncated message would be
-    // worse than reporting the problem.
-    const body = asString(doc.get('pendingBody'));
-    const address = await resolveAddress(refType, refId, channel);
+    // Isolate one row's failure from the rest of the batch — a provider call
+    // that throws (rather than resolving to a SendOutcome) or a transient
+    // Firestore write error must not abort every other queued message this
+    // pass, and must not silently strand a row whose email may already have
+    // gone out. The row is left untouched on error so the next pass retries
+    // it rather than reporting a false status.
+    try {
+      // The body is held transiently for exactly this moment; if it is gone
+      // the preview is all that survives, and sending a truncated message
+      // would be worse than reporting the problem.
+      const body = asString(doc.get('pendingBody'));
+      const address = await resolveAddress(refType, refId, channel);
 
-    let outcome: SendOutcome;
-    if (!address) {
-      outcome = {
-        status: 'failed',
-        reason: `No ${channel === 'email' ? 'email address' : 'phone number'} on file for this ${refType}.`,
-      };
-    } else if (!body) {
-      outcome = { status: 'failed', reason: 'Message body is no longer available to send.' };
-    } else {
-      outcome = await send(channel, address, asString(doc.get('subject')), body, appOrigin);
+      let outcome: SendOutcome;
+      if (!address) {
+        outcome = {
+          status: 'failed',
+          reason: `No ${channel === 'email' ? 'email address' : 'phone number'} on file for this ${refType}.`,
+        };
+      } else if (!body) {
+        outcome = { status: 'failed', reason: 'Message body is no longer available to send.' };
+      } else {
+        outcome = await send(channel, address, asString(doc.get('subject')), body, appOrigin);
+      }
+
+      const decision = decideNext(outcome, attempts, now);
+
+      await doc.ref.update({
+        status: decision.status,
+        failureReason: decision.failureReason,
+        attempts: FieldValue.increment(1),
+        nextAttemptAt: decision.nextAttemptAt,
+        ...(decision.status === 'sent'
+          ? {
+              sentAt: now,
+              // Body deleted on success: the provider is the system of record
+              // from here on, and the log keeps its preview (Doc 14 §19).
+              pendingBody: FieldValue.delete(),
+            }
+          : {}),
+        ...(decision.status === 'failed' ? { pendingBody: FieldValue.delete() } : {}),
+        updatedAt: now,
+        updatedBy: 'system',
+      });
+
+      if (decision.status === 'sent') summary.sent += 1;
+      else if (decision.status === 'failed') summary.failed += 1;
+      else summary.requeued += 1;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('dispatchQueuedCommunications: row failed, leaving it queued for retry', {
+        communicationId: doc.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      summary.skipped += 1;
     }
-
-    const decision = decideNext(outcome, attempts, now);
-
-    await doc.ref.update({
-      status: decision.status,
-      failureReason: decision.failureReason,
-      attempts: FieldValue.increment(1),
-      nextAttemptAt: decision.nextAttemptAt,
-      ...(decision.status === 'sent'
-        ? {
-            sentAt: now,
-            // Body deleted on success: the provider is the system of record
-            // from here on, and the log keeps its preview (Doc 14 §19).
-            pendingBody: FieldValue.delete(),
-          }
-        : {}),
-      ...(decision.status === 'failed' ? { pendingBody: FieldValue.delete() } : {}),
-      updatedAt: now,
-      updatedBy: 'system',
-    });
-
-    if (decision.status === 'sent') summary.sent += 1;
-    else if (decision.status === 'failed') summary.failed += 1;
-    else summary.requeued += 1;
   }
 
   return summary;

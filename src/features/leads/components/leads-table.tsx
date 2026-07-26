@@ -3,8 +3,13 @@
 import { formatDistanceToNow } from 'date-fns';
 import { Sparkles } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import * as React from 'react';
+import { toast } from 'sonner';
 
 import { StatusBadge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table,
@@ -15,11 +20,20 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+import { deleteLead } from '../actions/delete-lead';
 import type { Lead } from '../schema';
 import { LEAD_STAGE_BADGE, LEAD_STAGE_LABELS } from '../stage-labels';
 
-/** S10 list/board (Doc 16) — table view; board/kanban is a fast-follow. */
-export function LeadsTable({ leads }: { leads: Lead[] }) {
+/**
+ * S10 list/board (Doc 16) — table view; board/kanban is a fast-follow.
+ * `canDelete` only toggles the affordance — `deleteLead` re-checks
+ * `leads:delete` server-side regardless of what this component renders.
+ */
+export function LeadsTable({ leads, canDelete = false }: { leads: Lead[]; canDelete?: boolean }) {
+  const router = useRouter();
+  const [deleteTarget, setDeleteTarget] = React.useState<Lead | null>(null);
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+
   if (leads.length === 0) {
     return (
       <EmptyState
@@ -30,48 +44,91 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
     );
   }
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setPendingId(deleteTarget.id);
+    try {
+      const outcome = await deleteLead({ leadId: deleteTarget.id });
+      if (!outcome.ok) {
+        toast.error(outcome.error.message);
+        return;
+      }
+      toast.success(`${deleteTarget.name} was deleted`);
+      router.refresh();
+    } finally {
+      setPendingId(null);
+      setDeleteTarget(null);
+    }
+  };
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Stage</TableHead>
-          <TableHead>Source</TableHead>
-          <TableHead>Assigned to</TableHead>
-          <TableHead>Next follow-up</TableHead>
-          <TableHead>Updated</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {leads.map((lead) => (
-          <TableRow key={lead.id}>
-            <TableCell>
-              <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">
-                {lead.name}
-              </Link>
-              <div className="text-xs text-muted-foreground">{lead.phone}</div>
-            </TableCell>
-            <TableCell>
-              <StatusBadge
-                kind={LEAD_STAGE_BADGE[lead.stage]}
-                label={LEAD_STAGE_LABELS[lead.stage]}
-              />
-            </TableCell>
-            <TableCell className="text-sm capitalize text-muted-foreground">
-              {lead.source}
-            </TableCell>
-            <TableCell className="text-sm">{lead.assignedToName ?? 'Unassigned'}</TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {lead.nextFollowUpAt
-                ? formatDistanceToNow(new Date(lead.nextFollowUpAt), { addSuffix: true })
-                : '—'}
-            </TableCell>
-            <TableCell className="text-sm text-muted-foreground">
-              {formatDistanceToNow(new Date(lead.updatedAt), { addSuffix: true })}
-            </TableCell>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Stage</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Assigned to</TableHead>
+            <TableHead>Next follow-up</TableHead>
+            <TableHead>Updated</TableHead>
+            {canDelete ? <TableHead className="text-right">Actions</TableHead> : null}
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {leads.map((lead) => (
+            <TableRow key={lead.id}>
+              <TableCell>
+                <Link href={`/leads/${lead.id}`} className="font-medium hover:underline">
+                  {lead.name}
+                </Link>
+                <div className="text-xs text-muted-foreground">{lead.phone}</div>
+              </TableCell>
+              <TableCell>
+                <StatusBadge
+                  kind={LEAD_STAGE_BADGE[lead.stage]}
+                  label={LEAD_STAGE_LABELS[lead.stage]}
+                />
+              </TableCell>
+              <TableCell className="text-sm capitalize text-muted-foreground">
+                {lead.source}
+              </TableCell>
+              <TableCell className="text-sm">{lead.assignedToName ?? 'Unassigned'}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {lead.nextFollowUpAt
+                  ? formatDistanceToNow(new Date(lead.nextFollowUpAt), { addSuffix: true })
+                  : '—'}
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {formatDistanceToNow(new Date(lead.updatedAt), { addSuffix: true })}
+              </TableCell>
+              {canDelete ? (
+                <TableCell className="text-right">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pendingId === lead.id}
+                    onClick={() => setDeleteTarget(lead)}
+                  >
+                    Delete
+                  </Button>
+                </TableCell>
+              ) : null}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete this lead?"
+        consequence="Are you sure you want to delete this record? This action can only be performed by the Founder."
+        confirmLabel="Delete"
+        variant="destructive"
+        pending={pendingId === deleteTarget?.id}
+        onConfirm={confirmDelete}
+      />
+    </>
   );
 }

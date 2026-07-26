@@ -26,9 +26,9 @@ describe('buildRoleMatrix', () => {
     expect(dashboardRow?.cells.founder).toContain('view');
   });
 
-  it('system_admin has no access to leads module', () => {
+  it('system_admin holds only the narrow view+delete exception on leads (owner decision, 2026-07-25)', () => {
     const leadsRow = matrix.find((r) => r.module === 'leads');
-    expect(leadsRow?.cells.system_admin).toHaveLength(0);
+    expect([...(leadsRow?.cells.system_admin ?? [])].sort()).toEqual(['delete', 'view']);
   });
 
   it('trainer has attendance create permission', () => {

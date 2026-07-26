@@ -18,6 +18,7 @@ export const metadata: Metadata = { title: 'Communications' };
 export default async function CommunicationsPage() {
   const session = await requirePermission('communications:view');
   const canSend = can(session.role, 'communications:create');
+  const canDelete = can(session.role, 'communications:delete');
 
   const [rows, recipients] = await Promise.all([
     listCommunications(),
@@ -40,7 +41,7 @@ export default async function CommunicationsPage() {
       />
       <Card>
         <CardContent>
-          <CommunicationsLog rows={rows} />
+          <CommunicationsLog rows={rows} canDelete={canDelete} />
         </CardContent>
       </Card>
     </div>

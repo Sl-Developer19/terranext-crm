@@ -11,6 +11,8 @@ function row(overrides: Partial<Communication> = {}): Communication {
     refType: 'lead',
     refId: 'l1',
     refName: 'Asha Menon',
+    refEmail: null,
+    refPhone: null,
     templateKey: null,
     subject: 'Your enquiry',
     bodyPreview: 'Thank you for your interest.',

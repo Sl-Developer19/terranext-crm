@@ -111,7 +111,7 @@ service cloud.firestore {
 
 // <<GENERATED_RBAC_START>>
     // ── GENERATED RBAC predicates (condition C-1) ──────────────────────────
-    // Source: lib/rbac/permissions.ts · map-version: E75D506D
+    // Source: lib/rbac/permissions.ts · map-version: 0B881ECC
     // DO NOT EDIT this block manually — run scripts/generate-firestore-predicates.mts
     // and commit the result. CI will fail if this block has drifted.
     //
@@ -617,7 +617,7 @@ service cloud.firestore {
       return isStaff() && request.auth.token.role in ['founder', 'finance'];
     }
     function can_rewards_export() {
-      return isStaff() && request.auth.token.role in ['founder'];
+      return isStaff() && request.auth.token.role in ['founder', 'system_admin', 'finance'];
     }
     function can_rewards_configure() {
       return isStaff() && request.auth.token.role in ['founder', 'system_admin'];
@@ -995,6 +995,16 @@ service cloud.firestore {
         allow read: if can_rewards_view() || isOwnPartnerRecord(partnerId);
         allow write: if false; // Admin SDK only — append-only ledger
       }
+    }
+
+    // ── payoutRequests/* (Doc 25 §9/§13) ────────────────────────────────────
+    // Read: staff with `rewards:view` (oversight) OR the requesting partner.
+    //   Write: Admin SDK only — every transition (request/approve/reject/
+    //   paid) is a transactional wallet+ledger operation a rule cannot
+    //   safely express.
+    match /payoutRequests/{payoutId} {
+      allow read: if can_rewards_view() || isOwnPartnerRecord(resource.data.partnerId);
+      allow write: if false; // Admin SDK only
     }
 
     // ── partnerNotifications/* (Doc 25 §14) ─────────────────────────────────

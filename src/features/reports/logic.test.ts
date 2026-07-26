@@ -6,6 +6,7 @@ import {
   buildBatchUtilisation,
   buildCounsellingConversion,
   buildDuplicateSuspects,
+  buildGrowthPartnerRewards,
   buildLeadSource,
   buildPlacementFunnel,
   monthKey,
@@ -192,5 +193,34 @@ describe('buildPlacementFunnel', () => {
   it('renders the three BR-09 stages in order', () => {
     const result = buildPlacementFunnel({ evaluated: 20, eligible: 8, placed: 3 });
     expect(result.rows.map((r) => r.count)).toEqual([20, 8, 3]);
+  });
+});
+
+describe('buildGrowthPartnerRewards (Doc 25 §13/§15)', () => {
+  it('groups rewards by partner, splitting accrued from paid', () => {
+    const result = buildGrowthPartnerRewards([
+      { partnerId: 'p1', partnerName: 'Asha', amountPaise: 50_000, status: 'accrued' },
+      { partnerId: 'p1', partnerName: 'Asha', amountPaise: 100_000, status: 'paid' },
+      { partnerId: 'p2', partnerName: 'Ravi', amountPaise: 25_000, status: 'accrued' },
+    ]);
+
+    const asha = result.rows.find((r) => r.partnerName === 'Asha');
+    const ravi = result.rows.find((r) => r.partnerName === 'Ravi');
+    expect(asha).toMatchObject({ rewardCount: 2, accruedRupees: 500, paidRupees: 1_000 });
+    expect(ravi).toMatchObject({ rewardCount: 1, accruedRupees: 250, paidRupees: 0 });
+  });
+
+  it('ranks the highest-earning partner first', () => {
+    const result = buildGrowthPartnerRewards([
+      { partnerId: 'p1', partnerName: 'Small', amountPaise: 10_000, status: 'paid' },
+      { partnerId: 'p2', partnerName: 'Big', amountPaise: 500_000, status: 'paid' },
+    ]);
+    expect(result.rows[0]).toMatchObject({ partnerName: 'Big' });
+  });
+
+  it('handles an empty ledger', () => {
+    const result = buildGrowthPartnerRewards([]);
+    expect(result.rows).toHaveLength(0);
+    expect(result.note).toContain('0 rewards');
   });
 });

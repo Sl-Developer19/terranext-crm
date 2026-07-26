@@ -6,6 +6,7 @@ import {
   buildBatchUtilisation,
   buildCounsellingConversion,
   buildDuplicateSuspects,
+  buildGrowthPartnerRewards,
   buildLeadSource,
   buildPlacementFunnel,
 } from './logic';
@@ -15,6 +16,7 @@ import {
   loadBatchUtilisation,
   loadCounsellingConversion,
   loadDuplicateSuspects,
+  loadGrowthPartnerRewards,
   loadLeadSources,
   loadPlacementFunnel,
 } from './repository';
@@ -45,5 +47,7 @@ async function buildResult(reportId: ReportId): Promise<ReportResult> {
       return buildDuplicateSuspects(await loadDuplicateSuspects());
     case 'placement-funnel':
       return buildPlacementFunnel(await loadPlacementFunnel());
+    case 'growth-partner-rewards':
+      return buildGrowthPartnerRewards(await loadGrowthPartnerRewards());
   }
 }

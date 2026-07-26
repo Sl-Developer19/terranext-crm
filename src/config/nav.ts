@@ -135,6 +135,7 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: view('growthPartners'),
       },
       { label: 'Reward Rules', href: '/rewards', icon: Percent, permission: view('rewards') },
+      { label: 'Payouts', href: '/payouts', icon: Banknote, permission: view('rewards') },
     ],
   },
   {

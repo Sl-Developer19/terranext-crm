@@ -9,6 +9,7 @@ import type {
   BatchUtilisationInput,
   CounsellingConversionInput,
   DuplicateSuspectInput,
+  GrowthPartnerRewardInput,
   LeadSourceInput,
   PlacementFunnelInput,
 } from './logic';
@@ -178,4 +179,28 @@ export async function loadPlacementFunnel(): Promise<PlacementFunnelInput> {
     safeCount(() => db.collection('placements').where('status', '==', 'placed')),
   ]);
   return { evaluated, eligible, placed };
+}
+
+/** Doc 25 §13/§15 — every reward ledger entry, org-wide, with the partner name joined in. */
+export async function loadGrowthPartnerRewards(): Promise<GrowthPartnerRewardInput[]> {
+  const snap = await adminDb().collection('rewardLedger').limit(SCAN_CAP).get();
+  const partnerIds = [...new Set(snap.docs.map((d) => asString(d.get('partnerId'))))].filter(
+    (id) => id.length > 0,
+  );
+  const partnerDocs = await Promise.all(
+    partnerIds.map((id) => adminDb().collection('growthPartners').doc(id).get()),
+  );
+  const partnerNames = new Map(
+    partnerDocs.map((d) => [d.id, asString(d.get('displayName')) || d.id]),
+  );
+
+  return snap.docs.map((doc) => {
+    const partnerId = asString(doc.get('partnerId'));
+    return {
+      partnerId,
+      partnerName: partnerNames.get(partnerId) ?? partnerId,
+      amountPaise: asNumber(doc.get('amountPaise')),
+      status: (doc.get('status') as GrowthPartnerRewardInput['status']) ?? 'accrued',
+    };
+  });
 }

@@ -21,6 +21,7 @@ export const REPORT_IDS = [
   'alumni-growth',
   'duplicate-suspect-leads',
   'placement-funnel',
+  'growth-partner-rewards',
 ] as const;
 export type ReportId = (typeof REPORT_IDS)[number];
 
@@ -148,6 +149,20 @@ export const REPORT_CATALOGUE: readonly ReportDefinition[] = [
     columns: [
       { key: 'stage', label: 'Stage' },
       { key: 'count', label: 'Participants', numeric: true },
+    ],
+  },
+  {
+    id: 'growth-partner-rewards',
+    label: 'Growth Partner rewards',
+    source: 'Doc 25 §13/§15 — accounting/statement rollup, per partner',
+    description:
+      'Every Growth Partner’s reward count and amounts accrued vs. paid, highest-earning first.',
+    requires: 'rewards:view',
+    columns: [
+      { key: 'partnerName', label: 'Partner' },
+      { key: 'rewardCount', label: 'Rewards', numeric: true },
+      { key: 'accruedRupees', label: 'Accrued (₹)', numeric: true },
+      { key: 'paidRupees', label: 'Paid (₹)', numeric: true },
     ],
   },
 ];

@@ -104,3 +104,134 @@ export function writeRewardInTx(
 
   return { ledgerId: ledgerRef.id, amountPaise };
 }
+
+/**
+ * Requests a payout for the partner's entire current balance (Doc 25 §13).
+ * Transactional: the balance read and the request-doc write must see the
+ * same balance, and a second concurrent request must not be allowed to slip
+ * in against the same funds before the first is decided.
+ */
+export async function createPayoutRequestRecord(
+  partnerId: string,
+): Promise<
+  | { kind: 'created'; payoutId: string; amountPaise: number }
+  | { kind: 'no_balance' }
+  | { kind: 'already_pending' }
+> {
+  const db = adminDb();
+  const walletRef = db.collection('wallets').doc(partnerId);
+
+  return db.runTransaction(async (tx) => {
+    const [walletSnap, pendingSnap] = await Promise.all([
+      tx.get(walletRef),
+      tx.get(
+        db
+          .collection('payoutRequests')
+          .where('partnerId', '==', partnerId)
+          .where('status', 'in', ['requested', 'approved', 'processing'])
+          .limit(1),
+      ),
+    ]);
+
+    if (!pendingSnap.empty) return { kind: 'already_pending' };
+
+    const balancePaise =
+      typeof walletSnap.get('balancePaise') === 'number'
+        ? (walletSnap.get('balancePaise') as number)
+        : 0;
+    if (balancePaise <= 0) return { kind: 'no_balance' };
+
+    const ref = db.collection('payoutRequests').doc();
+    tx.set(ref, {
+      schemaVersion: 1,
+      partnerId,
+      amountPaise: balancePaise,
+      status: 'requested',
+      requestedAt: new Date(),
+      decidedBy: null,
+      decidedAt: null,
+      paidAt: null,
+      reason: null,
+    });
+
+    return { kind: 'created', payoutId: ref.id, amountPaise: balancePaise };
+  });
+}
+
+/** Approves or rejects a requested payout (Doc 25 §9/§13) — no wallet movement either way. */
+export async function decidePayoutRecord(
+  payoutId: string,
+  decision: 'approve' | 'reject',
+  actorUid: string,
+  reason: string | undefined,
+): Promise<'decided' | 'not_found' | 'not_pending'> {
+  const ref = adminDb().collection('payoutRequests').doc(payoutId);
+  const snap = await ref.get();
+  if (!snap.exists) return 'not_found';
+  if (snap.get('status') !== 'requested') return 'not_pending';
+
+  await ref.update({
+    status: decision === 'approve' ? 'approved' : 'rejected',
+    decidedBy: actorUid,
+    decidedAt: new Date(),
+    reason: reason ?? null,
+  });
+  return 'decided';
+}
+
+/**
+ * Finalizes an approved payout (Doc 25 §13): debits the wallet by exactly
+ * the payout's own amount, logs the debit transaction, and marks every
+ * `accrued` ledger entry for this partner as `paid` — all in one
+ * transaction, so the wallet and the ledger can never disagree about what's
+ * been paid.
+ */
+export async function markPayoutPaidRecord(
+  payoutId: string,
+): Promise<
+  | { kind: 'paid'; partnerId: string; amountPaise: number }
+  | { kind: 'not_found' }
+  | { kind: 'not_approved' }
+> {
+  const db = adminDb();
+  const payoutRef = db.collection('payoutRequests').doc(payoutId);
+
+  return db.runTransaction(async (tx) => {
+    const payoutSnap = await tx.get(payoutRef);
+    if (!payoutSnap.exists) return { kind: 'not_found' };
+    if (payoutSnap.get('status') !== 'approved') return { kind: 'not_approved' };
+
+    const partnerId = payoutSnap.get('partnerId') as string;
+    const amountPaise = payoutSnap.get('amountPaise') as number;
+    const walletRef = db.collection('wallets').doc(partnerId);
+
+    const accruedSnap = await tx.get(
+      db
+        .collection('rewardLedger')
+        .where('partnerId', '==', partnerId)
+        .where('status', '==', 'accrued'),
+    );
+
+    const now = new Date();
+    tx.update(walletRef, { balancePaise: FieldValue.increment(-amountPaise), updatedAt: now });
+
+    const walletTxRef = walletRef.collection('transactions').doc();
+    tx.set(walletTxRef, {
+      schemaVersion: 1,
+      kind: 'debit',
+      amountPaise,
+      reason: 'payout_paid',
+      refLedgerId: null,
+      refPayoutId: payoutId,
+      createdAt: now,
+    });
+
+    for (const doc of accruedSnap.docs) {
+      tx.update(doc.ref, { status: 'paid' });
+    }
+
+    tx.update(payoutRef, { status: 'paid', paidAt: now });
+
+    return { kind: 'paid', partnerId, amountPaise };
+  });
+}

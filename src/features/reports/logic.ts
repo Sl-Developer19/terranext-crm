@@ -226,3 +226,46 @@ export function buildPlacementFunnel(input: PlacementFunnelInput): ReportResult 
     note: 'Eligibility is a selective human decision, never automatic (BR-09).',
   };
 }
+
+/* ── Doc 25 §13/§15 · Growth Partner rewards ─────────────────────────────── */
+
+export interface GrowthPartnerRewardInput {
+  partnerId: string;
+  partnerName: string;
+  amountPaise: number;
+  status: 'accrued' | 'paid';
+}
+
+export function buildGrowthPartnerRewards(rows: readonly GrowthPartnerRewardInput[]): ReportResult {
+  const totals = new Map<
+    string,
+    { partnerName: string; rewardCount: number; accruedPaise: number; paidPaise: number }
+  >();
+  for (const row of rows) {
+    const entry = totals.get(row.partnerId) ?? {
+      partnerName: row.partnerName,
+      rewardCount: 0,
+      accruedPaise: 0,
+      paidPaise: 0,
+    };
+    entry.rewardCount += 1;
+    if (row.status === 'paid') entry.paidPaise += row.amountPaise;
+    else entry.accruedPaise += row.amountPaise;
+    totals.set(row.partnerId, entry);
+  }
+
+  const reportRows: ReportRow[] = [...totals.values()]
+    .map((entry) => ({
+      partnerName: entry.partnerName,
+      rewardCount: entry.rewardCount,
+      accruedRupees: Math.round(entry.accruedPaise / 100),
+      paidRupees: Math.round(entry.paidPaise / 100),
+    }))
+    .sort((a, b) => b.paidRupees + b.accruedRupees - (a.paidRupees + a.accruedRupees));
+
+  return {
+    columns: [],
+    rows: reportRows,
+    note: `${rows.length} reward${rows.length === 1 ? '' : 's'} across ${totals.size} partner${totals.size === 1 ? '' : 's'}.`,
+  };
+}

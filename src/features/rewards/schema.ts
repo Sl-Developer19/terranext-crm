@@ -93,3 +93,47 @@ export interface WalletTransaction {
   refPayoutId: string | null;
   createdAt: string;
 }
+
+/**
+ * Payout requests (Doc 25 §13). A request is always for the partner's
+ * *entire* current wallet balance at request time — never an arbitrary
+ * partner-typed amount — so a paid payout can always debit the wallet by
+ * exactly its own `amountPaise` with no partial-reconciliation logic
+ * against individual reward ledger entries. `processing` is a valid status
+ * for reporting; this build's workflow moves requested -> approved/rejected
+ * -> paid directly (a manual "start processing" step is a natural
+ * follow-up, not required for a correct payout).
+ */
+export const PAYOUT_STATUSES = ['requested', 'approved', 'rejected', 'processing', 'paid'] as const;
+export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
+
+export interface PayoutRequest {
+  id: string;
+  partnerId: string;
+  partnerName: string | null;
+  amountPaise: number;
+  status: PayoutStatus;
+  requestedAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  paidAt: string | null;
+  reason: string | null;
+}
+
+export const decidePayoutSchema = z
+  .object({
+    payoutId: z.string().min(1),
+    decision: z.enum(['approve', 'reject']),
+    reason: z.string().trim().max(500).optional().or(z.literal('')),
+  })
+  .strict();
+
+export type DecidePayoutInput = z.infer<typeof decidePayoutSchema>;
+
+export const markPayoutPaidSchema = z
+  .object({
+    payoutId: z.string().min(1),
+  })
+  .strict();
+
+export type MarkPayoutPaidInput = z.infer<typeof markPayoutPaidSchema>;

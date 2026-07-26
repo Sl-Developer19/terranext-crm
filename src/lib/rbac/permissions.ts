@@ -133,7 +133,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     // Growth Partner onboarding (Doc 25): System Admin registers and approves
     // (mints the partner's account) and activates/deactivates post-approval.
     ...p('growthPartners', 'view', 'create', 'update', 'approve'),
-    ...p('rewards', 'view', 'configure'),
+    ...p('rewards', 'view', 'configure', 'export'),
     ...p('users', 'view', 'create', 'update'),
     ...p('roles', 'view', 'configure'),
     ...p('audit', 'view', 'export'),
@@ -215,7 +215,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     // reviews the ledger and approves payout requests, same separation of
     // duties as fees:approve above.
     ...p('growthPartners', 'view'),
-    ...p('rewards', 'view', 'approve'),
+    ...p('rewards', 'view', 'approve', 'export'),
   ],
   placement: [
     ...p('dashboard', 'view'),

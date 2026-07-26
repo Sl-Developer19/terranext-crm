@@ -5,10 +5,29 @@ import type { QueryDocumentSnapshot, DocumentSnapshot } from 'firebase-admin/fir
 
 import { adminDb } from '@/lib/firebase/admin';
 
-import type { RewardLedgerEntry, RewardRule, Wallet, WalletTransaction } from './schema';
+import type {
+  PayoutRequest,
+  RewardLedgerEntry,
+  RewardRule,
+  Wallet,
+  WalletTransaction,
+} from './schema';
 
 function toIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
+}
+
+async function resolvePartnerNames(ids: unknown[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((v): v is string => typeof v === 'string'))];
+  const map = new Map<string, string>();
+  await Promise.all(
+    unique.map(async (id) => {
+      const snap = await adminDb().collection('growthPartners').doc(id).get();
+      const name = snap.get('displayName');
+      map.set(id, typeof name === 'string' ? name : id);
+    }),
+  );
+  return map;
 }
 
 async function resolveProgrammeNames(ids: unknown[]): Promise<Map<string, string>> {
@@ -119,4 +138,42 @@ export async function listWalletTransactions(partnerId: string): Promise<WalletT
       createdAt: toIso(data.createdAt) ?? '',
     };
   });
+}
+
+function toPayoutRequest(
+  doc: QueryDocumentSnapshot | DocumentSnapshot,
+  partnerNames: Map<string, string>,
+): PayoutRequest {
+  const data = doc.data() ?? {};
+  const partnerId = typeof data.partnerId === 'string' ? data.partnerId : '';
+  return {
+    id: doc.id,
+    partnerId,
+    partnerName: partnerNames.get(partnerId) ?? null,
+    amountPaise: typeof data.amountPaise === 'number' ? data.amountPaise : 0,
+    status: data.status,
+    requestedAt: toIso(data.requestedAt) ?? '',
+    decidedBy: typeof data.decidedBy === 'string' ? data.decidedBy : null,
+    decidedAt: toIso(data.decidedAt),
+    paidAt: toIso(data.paidAt),
+    reason: typeof data.reason === 'string' ? data.reason : null,
+  };
+}
+
+/** Doc 25 §9/§13 — every payout request, org-wide (Founder/Finance oversight). */
+export async function listPayoutRequests(): Promise<PayoutRequest[]> {
+  const snap = await adminDb().collection('payoutRequests').orderBy('requestedAt', 'desc').get();
+  const partnerNames = await resolvePartnerNames(snap.docs.map((d) => d.get('partnerId')));
+  return snap.docs.map((doc) => toPayoutRequest(doc, partnerNames));
+}
+
+/** A partner's own payout requests, row-scoped by partnerId. */
+export async function listPartnerPayoutRequests(partnerId: string): Promise<PayoutRequest[]> {
+  const snap = await adminDb()
+    .collection('payoutRequests')
+    .where('partnerId', '==', partnerId)
+    .orderBy('requestedAt', 'desc')
+    .get();
+  const partnerNames = await resolvePartnerNames([partnerId]);
+  return snap.docs.map((doc) => toPayoutRequest(doc, partnerNames));
 }

@@ -77,6 +77,15 @@
       ]
     },
     {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "deletedAt", "order": "ASCENDING" },
+        { "fieldPath": "stage", "order": "ASCENDING" },
+        { "fieldPath": "partnerId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "growthPartners",
       "queryScope": "COLLECTION",
       "fields": [

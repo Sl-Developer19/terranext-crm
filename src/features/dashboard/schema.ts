@@ -63,6 +63,14 @@ export const METRIC_KEYS = [
   'enquiryToAdmissionRate',
   'parentConversionRate',
   'outstandingFees',
+  // Doc 25 §6 — Growth Partner Management System
+  'gpTotalPartners',
+  'gpActivePartners',
+  'gpTotalReferrals',
+  'gpReferralConversionRate',
+  'gpRewardsGenerated',
+  'gpRewardsPaid',
+  'gpPendingRewards',
 ] as const;
 
 export type MetricKey = (typeof METRIC_KEYS)[number];
@@ -106,4 +114,11 @@ export interface DashboardCounts {
   attendanceSampleSize: number;
   revenuePaisePaid: number;
   revenuePaiseOutstanding: number;
+  /** Doc 25 §6 — Growth Partner Management System. */
+  gpTotalPartners: number;
+  gpActivePartners: number;
+  gpTotalReferrals: number;
+  gpAdmittedReferrals: number;
+  gpRewardsAccruedPaise: number;
+  gpRewardsPaidPaise: number;
 }

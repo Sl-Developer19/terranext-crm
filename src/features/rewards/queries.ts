@@ -5,6 +5,7 @@ import type { QueryDocumentSnapshot, DocumentSnapshot } from 'firebase-admin/fir
 
 import { adminDb } from '@/lib/firebase/admin';
 
+import { rankPartnersByRewards, type LeaderboardEntry } from './logic';
 import type {
   PayoutRequest,
   RewardLedgerEntry,
@@ -176,4 +177,29 @@ export async function listPartnerPayoutRequests(partnerId: string): Promise<Payo
     .get();
   const partnerNames = await resolvePartnerNames([partnerId]);
   return snap.docs.map((doc) => toPayoutRequest(doc, partnerNames));
+}
+
+/**
+ * Doc 25 §6 — Top/Lowest Performing Partners leaderboard, ranked by total
+ * (accrued + paid) reward earnings. A single ordered list serves both ends
+ * of the leaderboard — the caller slices the head or tail it needs.
+ */
+export async function getRewardLeaderboard(): Promise<LeaderboardEntry[]> {
+  const snap = await adminDb().collection('rewardLedger').limit(1_000).get();
+  const partnerIds = snap.docs.map((d) => d.get('partnerId') as unknown);
+  const partnerNames = await resolvePartnerNames(partnerIds);
+
+  return rankPartnersByRewards(
+    snap.docs.map((doc) => {
+      const partnerId =
+        typeof doc.get('partnerId') === 'string' ? (doc.get('partnerId') as string) : '';
+      return {
+        partnerId,
+        partnerName: partnerNames.get(partnerId) ?? partnerId,
+        amountPaise:
+          typeof doc.get('amountPaise') === 'number' ? (doc.get('amountPaise') as number) : 0,
+        status: doc.get('status'),
+      };
+    }),
+  );
 }

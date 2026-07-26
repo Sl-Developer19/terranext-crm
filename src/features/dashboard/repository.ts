@@ -62,6 +62,10 @@ export async function loadDashboardCounts(): Promise<DashboardCounts> {
     familiesConverted,
     trainersTotal,
     assessmentsTotal,
+    gpTotalPartners,
+    gpActivePartners,
+    gpTotalReferrals,
+    gpAdmittedReferrals,
   ] = await Promise.all([
     safeCount(() => db.collection('leads').where('deletedAt', '==', null)),
     safeCount(() =>
@@ -100,6 +104,23 @@ export async function loadDashboardCounts(): Promise<DashboardCounts> {
       db.collection('users').where('role', '==', 'trainer').where('status', '==', 'active'),
     ),
     safeCount(() => db.collection('assessments').where('deletedAt', '==', null)),
+    safeCount(() => db.collection('growthPartners').where('deletedAt', '==', null)),
+    safeCount(() =>
+      db
+        .collection('growthPartners')
+        .where('deletedAt', '==', null)
+        .where('status', '==', 'active'),
+    ),
+    safeCount(() =>
+      db.collection('leads').where('deletedAt', '==', null).where('partnerId', '!=', null),
+    ),
+    safeCount(() =>
+      db
+        .collection('leads')
+        .where('deletedAt', '==', null)
+        .where('partnerId', '!=', null)
+        .where('stage', '==', 'admitted'),
+    ),
   ]);
 
   const [
@@ -109,6 +130,7 @@ export async function loadDashboardCounts(): Promise<DashboardCounts> {
     assessmentsScored,
     attendance,
     revenue,
+    gpRewards,
   ] = await Promise.all([
     safeCount(() => db.collection('alumniRecords').where('memberSince', '>=', monthStart)),
     // `batches/{id}/sessions` (delivery sessions) and `families/{id}/sessions`
@@ -125,6 +147,7 @@ export async function loadDashboardCounts(): Promise<DashboardCounts> {
     countScoredAssessments(),
     meanAttendance(),
     revenueTotals(),
+    growthPartnerRewardTotals(),
   ]);
 
   return {
@@ -150,6 +173,12 @@ export async function loadDashboardCounts(): Promise<DashboardCounts> {
     attendanceSampleSize: attendance.sampleSize,
     revenuePaisePaid: revenue.paid,
     revenuePaiseOutstanding: revenue.outstanding,
+    gpTotalPartners,
+    gpActivePartners,
+    gpTotalReferrals,
+    gpAdmittedReferrals,
+    gpRewardsAccruedPaise: gpRewards.accrued,
+    gpRewardsPaidPaise: gpRewards.paid,
   };
 }
 
@@ -246,5 +275,26 @@ async function revenueTotals(): Promise<{ paid: number; outstanding: number }> {
     return { paid, outstanding };
   } catch {
     return { paid: 0, outstanding: 0 };
+  }
+}
+
+/** Doc 25 §6/§13 — reward ledger totals, same bounded-scan discipline as revenueTotals(). */
+async function growthPartnerRewardTotals(): Promise<{ accrued: number; paid: number }> {
+  try {
+    const snap = await adminDb()
+      .collection('rewardLedger')
+      .select('amountPaise', 'status')
+      .limit(SCAN_CAP)
+      .get();
+
+    let accrued = 0;
+    let paid = 0;
+    for (const doc of snap.docs) {
+      if (doc.get('status') === 'paid') paid += asNumber(doc.get('amountPaise'));
+      else accrued += asNumber(doc.get('amountPaise'));
+    }
+    return { accrued, paid };
+  } catch {
+    return { accrued: 0, paid: 0 };
   }
 }

@@ -34,6 +34,12 @@ const EMPTY: DashboardCounts = {
   attendanceSampleSize: 0,
   revenuePaisePaid: 0,
   revenuePaiseOutstanding: 0,
+  gpTotalPartners: 0,
+  gpActivePartners: 0,
+  gpTotalReferrals: 0,
+  gpAdmittedReferrals: 0,
+  gpRewardsAccruedPaise: 0,
+  gpRewardsPaidPaise: 0,
 };
 
 const POPULATED: DashboardCounts = {
@@ -178,9 +184,15 @@ describe('populated figures compute correctly', () => {
 });
 
 describe('sectionsForRole (SOP 15.5 access matrix)', () => {
-  it('gives the founder the full SOP 18.10 KPI set', () => {
+  it('gives the founder the full SOP 18.10 KPI set plus Growth Partners', () => {
     const titles = sectionsForRole('founder', POPULATED).map((s) => s.title);
-    expect(titles).toEqual(['Acquisition', 'Academic delivery', 'Outcomes', 'Finance']);
+    expect(titles).toEqual([
+      'Acquisition',
+      'Academic delivery',
+      'Outcomes',
+      'Finance',
+      'Growth Partners',
+    ]);
   });
 
   it('does not show organisation revenue to a trainer', () => {
@@ -189,8 +201,11 @@ describe('sectionsForRole (SOP 15.5 access matrix)', () => {
     expect(titles).toEqual(['Academic delivery']);
   });
 
-  it('shows finance only its own section', () => {
-    expect(sectionsForRole('finance', POPULATED).map((s) => s.title)).toEqual(['Finance']);
+  it('shows finance its own section plus Growth Partners reward accounting', () => {
+    expect(sectionsForRole('finance', POPULATED).map((s) => s.title)).toEqual([
+      'Finance',
+      'Growth Partners',
+    ]);
   });
 
   it('shows a consultant acquisition only', () => {

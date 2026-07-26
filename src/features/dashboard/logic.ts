@@ -194,6 +194,39 @@ export function financeSection(counts: DashboardCounts): DashboardSection {
   };
 }
 
+export function growthPartnersSection(counts: DashboardCounts): DashboardSection {
+  return {
+    title: 'Growth Partners',
+    description: 'Referral network reach, conversion, and reward accounting (Doc 25 §6).',
+    metrics: [
+      ok('gpTotalPartners', 'Growth Partners', counts.gpTotalPartners, 'count'),
+      ok(
+        'gpActivePartners',
+        'Active partners',
+        counts.gpActivePartners,
+        'count',
+        `of ${counts.gpTotalPartners} total`,
+      ),
+      ok('gpTotalReferrals', 'Referrals', counts.gpTotalReferrals, 'count'),
+      rateMetric(
+        'gpReferralConversionRate',
+        'Referral conversion',
+        counts.gpAdmittedReferrals,
+        counts.gpTotalReferrals,
+        'No referrals recorded yet.',
+      ),
+      ok(
+        'gpRewardsGenerated',
+        'Rewards generated',
+        counts.gpRewardsAccruedPaise + counts.gpRewardsPaidPaise,
+        'currency',
+      ),
+      ok('gpRewardsPaid', 'Rewards paid', counts.gpRewardsPaidPaise, 'currency'),
+      ok('gpPendingRewards', 'Pending rewards', counts.gpRewardsAccruedPaise, 'currency'),
+    ],
+  };
+}
+
 /**
  * Sections a role may see, mirroring the SOP 15.5 access matrix.
  *
@@ -210,19 +243,26 @@ export function sectionsForRole(role: StaffRole, counts: DashboardCounts): Dashb
         academicSection(counts),
         outcomesSection(counts),
         financeSection(counts),
+        growthPartnersSection(counts),
       ];
     case 'ops_manager':
-      return [acquisitionSection(counts), academicSection(counts), outcomesSection(counts)];
+      return [
+        acquisitionSection(counts),
+        academicSection(counts),
+        outcomesSection(counts),
+        growthPartnersSection(counts),
+      ];
     case 'system_admin':
-      // Platform administration, not business performance.
-      return [academicSection(counts)];
+      // Platform administration, not business performance — Growth Partner
+      // onboarding oversight is the one business-shaped exception it owns.
+      return [academicSection(counts), growthPartnersSection(counts)];
     case 'consultant':
       return [acquisitionSection(counts)];
     case 'coordinator':
     case 'trainer':
       return [academicSection(counts)];
     case 'finance':
-      return [financeSection(counts)];
+      return [financeSection(counts), growthPartnersSection(counts)];
     case 'placement':
       return [outcomesSection(counts)];
   }

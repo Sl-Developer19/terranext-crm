@@ -5,6 +5,7 @@ export { RewardLedgerTable } from './components/reward-ledger-table';
 export { PayoutRequestsTable } from './components/payout-requests-table';
 export { RequestPayoutButton } from './components/request-payout-button';
 export { PartnerPayoutHistory } from './components/partner-payout-history';
+export { LeaderboardTable } from './components/leaderboard-table';
 export {
   listRewardRules,
   listPartnerRewardLedger,
@@ -13,8 +14,9 @@ export {
   listWalletTransactions,
   listPayoutRequests,
   listPartnerPayoutRequests,
+  getRewardLeaderboard,
 } from './queries';
-export { computeRewardAmount } from './logic';
+export { computeRewardAmount, rankPartnersByRewards, type LeaderboardEntry } from './logic';
 export {
   REWARD_RULE_KINDS,
   REWARD_LEDGER_STATUSES,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeRewardAmount } from './logic';
+import { computeRewardAmount, rankPartnersByRewards } from './logic';
 
 describe('computeRewardAmount (Doc 25 §10/§11)', () => {
   it('returns the configured flat amount unchanged', () => {
@@ -23,5 +23,21 @@ describe('computeRewardAmount (Doc 25 §10/§11)', () => {
     expect(
       computeRewardAmount({ kind: 'percent', amountPaise: null, percentBps: null }, 100_000),
     ).toBe(0);
+  });
+});
+
+describe('rankPartnersByRewards (Doc 25 §6)', () => {
+  it('ranks partners by combined accrued + paid earnings, highest first', () => {
+    const ranked = rankPartnersByRewards([
+      { partnerId: 'p1', partnerName: 'Asha', amountPaise: 50_000, status: 'accrued' },
+      { partnerId: 'p2', partnerName: 'Ravi', amountPaise: 500_000, status: 'paid' },
+      { partnerId: 'p1', partnerName: 'Asha', amountPaise: 10_000, status: 'paid' },
+    ]);
+    expect(ranked.map((r) => r.partnerName)).toEqual(['Ravi', 'Asha']);
+    expect(ranked[1]).toMatchObject({ totalPaise: 60_000, rank: 2 });
+  });
+
+  it('returns an empty leaderboard when there are no rewards at all', () => {
+    expect(rankPartnersByRewards([])).toEqual([]);
   });
 });

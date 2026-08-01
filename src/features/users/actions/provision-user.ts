@@ -129,6 +129,8 @@ export async function provisionUser(
     const bodyText =
       `${displayName}, an account has been created for you on TerraNext Business OS.\n\n` +
       'Set your password to sign in for the first time.';
+    // eslint-disable-next-line no-console
+    console.log('[email] sending welcome email to recipient:', email);
     const outcome = await getEmailProvider().send({
       to: email,
       subject: 'Your TerraNext Business OS account is ready',

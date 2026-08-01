@@ -27,6 +27,8 @@ const emailSender: ResetEmailSender = {
       'We received a request to reset your TerraNext Business OS password.\n\n' +
       'If you did not request this, you can ignore this email — your password will not change.';
 
+    // eslint-disable-next-line no-console
+    console.log('[email] sending password-reset email to recipient:', email);
     const outcome = await getEmailProvider().send({
       to: email,
       subject: 'Reset your TerraNext Business OS password',

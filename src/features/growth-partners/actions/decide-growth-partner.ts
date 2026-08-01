@@ -123,10 +123,15 @@ export async function decideGrowthPartner(
 
   const origin = await appOrigin();
   const brandedLink = await generateBrandedResetLink(email, origin);
+  // Approval never rolls back on a failed/skipped send (already committed
+  // above) — these fields just make the outcome visible afterwards instead
+  // of only in server logs.
   if (brandedLink) {
     const bodyText =
       `${displayName}, your Growth Partner account has been approved.\n\n` +
       'Set your password to sign in to the partner portal for the first time.';
+    // eslint-disable-next-line no-console
+    console.log('[email] sending Growth Partner welcome email to recipient:', email);
     const outcome = await getEmailProvider().send({
       to: email,
       subject: 'Your Growth Partner account is approved',
@@ -149,6 +154,23 @@ export async function decideGrowthPartner(
     if (outcome.status === 'failed') {
       console.error('Growth Partner welcome email failed to send:', outcome.reason);
     }
+    await ref
+      .update({
+        emailSent: outcome.status === 'sent',
+        emailSentAt: new Date(),
+        emailStatus: outcome.status === 'sent' ? 'sent' : 'failed',
+        emailError: outcome.status === 'sent' ? null : outcome.reason,
+      })
+      .catch(() => undefined);
+  } else {
+    await ref
+      .update({
+        emailSent: false,
+        emailSentAt: new Date(),
+        emailStatus: 'skipped',
+        emailError: null,
+      })
+      .catch(() => undefined);
   }
 
   await notifyPartner(partnerId, {

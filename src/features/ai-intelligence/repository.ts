@@ -4,7 +4,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebase/admin';
 
-import { sessionAudioStoragePath } from './logic';
+import { sessionChunkStoragePath } from './logic';
 import type {
   AiAnalyticsDay,
   AiDashboardStats,
@@ -12,9 +12,11 @@ import type {
   AiJobStage,
   AiProcessingJob,
   AiSession,
+  AiSessionChunk,
   AiSessionStatus,
   AiSummary,
   AiTranscript,
+  ChunkStatus,
   TranscriptSegment,
 } from './schema';
 
@@ -96,9 +98,7 @@ function toSession(
     programmeId,
     programmeName: programmeId ? (lookups.programmeNames.get(programmeId) ?? programmeId) : null,
     deviceLabel: asStringOrNull(data.deviceLabel),
-    audioStoragePath: asStringOrNull(data.audioStoragePath),
-    audioContentType: asStringOrNull(data.audioContentType),
-    audioSizeBytes: asNumberOrNull(data.audioSizeBytes),
+    totalChunks: asNumberOrNull(data.totalChunks),
     durationSeconds: asNumberOrNull(data.durationSeconds),
     processingJobId: asStringOrNull(data.processingJobId),
     transcriptId: asStringOrNull(data.transcriptId),
@@ -114,6 +114,7 @@ function toSession(
 }
 
 const SESSIONS_COLLECTION = 'aiSessions';
+const CHUNKS_SUBCOLLECTION = 'chunks';
 const JOBS_COLLECTION = 'aiProcessingJobs';
 const TRANSCRIPTS_COLLECTION = 'aiTranscripts';
 const SUMMARIES_COLLECTION = 'aiSummaries';
@@ -162,9 +163,7 @@ export async function createSessionRecord(
     batchId: input.batchId,
     programmeId: input.programmeId,
     deviceLabel: input.deviceLabel,
-    audioStoragePath: null,
-    audioContentType: null,
-    audioSizeBytes: null,
+    totalChunks: null,
     durationSeconds: null,
     processingJobId: null,
     transcriptId: null,
@@ -182,63 +181,160 @@ export async function createSessionRecord(
 
 export async function findSessionMeta(
   sessionId: string,
-): Promise<{ status: AiSessionStatus; trainerUid: string } | null> {
+): Promise<{ status: AiSessionStatus; trainerUid: string; title: string } | null> {
   const snap = await adminDb().collection(SESSIONS_COLLECTION).doc(sessionId).get();
   if (!snap.exists) return null;
   return {
     status: (asString(snap.get('status')) || 'draft') as AiSessionStatus,
     trainerUid: asString(snap.get('trainerUid')),
-  };
-}
-
-export async function findSessionUploadMeta(sessionId: string): Promise<{
-  status: AiSessionStatus;
-  trainerUid: string;
-  storagePath: string | null;
-  contentType: string | null;
-  expectedSizeBytes: number | null;
-  title: string;
-} | null> {
-  const snap = await adminDb().collection(SESSIONS_COLLECTION).doc(sessionId).get();
-  if (!snap.exists) return null;
-  return {
-    status: (asString(snap.get('status')) || 'draft') as AiSessionStatus,
-    trainerUid: asString(snap.get('trainerUid')),
-    storagePath: asStringOrNull(snap.get('audioStoragePath')),
-    contentType: asStringOrNull(snap.get('audioContentType')),
-    expectedSizeBytes: asNumberOrNull(snap.get('audioSizeBytes')),
     title: asString(snap.get('title')) || 'Untitled session',
   };
 }
 
-/** Reserves the audio path against the session before the signed upload URL is issued. */
-export async function reserveSessionAudioPath(
+function chunkDocRef(sessionId: string, chunkIndex: number) {
+  return adminDb()
+    .collection(SESSIONS_COLLECTION)
+    .doc(sessionId)
+    .collection(CHUNKS_SUBCOLLECTION)
+    .doc(String(chunkIndex));
+}
+
+function toChunk(
+  doc: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot,
+): AiSessionChunk {
+  const data = doc.data() ?? {};
+  return {
+    id: doc.id,
+    sessionId: asString(data.sessionId),
+    chunkIndex: asNumberOrNull(data.chunkIndex) ?? 0,
+    status: (asString(data.status) || 'uploading') as ChunkStatus,
+    storagePath: asStringOrNull(data.storagePath),
+    contentType: asStringOrNull(data.contentType),
+    sizeBytes: asNumberOrNull(data.sizeBytes),
+    startOffsetSec: asNumberOrNull(data.startOffsetSec) ?? 0,
+    durationSeconds: asNumberOrNull(data.durationSeconds),
+    attempts: asNumberOrNull(data.attempts) ?? 0,
+    error: asStringOrNull(data.error),
+    createdAt: toIso(data.createdAt),
+    updatedAt: toIso(data.updatedAt) || toIso(data.createdAt),
+  };
+}
+
+/**
+ * Marks the session `recording` and records when it started — called once,
+ * for chunk 0 only. Later chunks reuse the same in-progress session without
+ * touching this again.
+ */
+export async function markSessionRecordingStarted(
   sessionId: string,
-  contentType: string,
-  sizeBytes: number,
   actorUid: string,
-): Promise<string> {
-  const storagePath = sessionAudioStoragePath(sessionId, contentType);
+): Promise<void> {
   await adminDb()
     .collection(SESSIONS_COLLECTION)
     .doc(sessionId)
     .update({
       status: 'recording' satisfies AiSessionStatus,
-      audioStoragePath: storagePath,
-      audioContentType: contentType,
-      audioSizeBytes: sizeBytes,
       startedAt: FieldValue.serverTimestamp(),
       updatedAt: new Date(),
       updatedBy: actorUid,
     });
+}
+
+/** Creates (or re-issues, on a retried upload) the chunk's storage path before the signed URL is minted. */
+export async function reserveChunkUploadPath(
+  sessionId: string,
+  chunkIndex: number,
+  contentType: string,
+  sizeBytes: number,
+  startOffsetSec: number,
+  actorUid: string,
+): Promise<string> {
+  const storagePath = sessionChunkStoragePath(sessionId, chunkIndex, contentType);
+  const now = new Date();
+  await chunkDocRef(sessionId, chunkIndex).set(
+    {
+      schemaVersion: 1,
+      sessionId,
+      chunkIndex,
+      status: 'uploading' satisfies ChunkStatus,
+      storagePath,
+      contentType,
+      sizeBytes,
+      startOffsetSec,
+      durationSeconds: null,
+      attempts: 0,
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: actorUid,
+    },
+    { merge: true },
+  );
   return storagePath;
 }
 
-/** Confirms the recording landed and enqueues processing — the automatic pipeline's entry point. */
-export async function markSessionRecordedAndEnqueue(
+export async function findChunkMeta(
+  sessionId: string,
+  chunkIndex: number,
+): Promise<{
+  status: ChunkStatus;
+  storagePath: string | null;
+  contentType: string | null;
+  expectedSizeBytes: number | null;
+} | null> {
+  const snap = await chunkDocRef(sessionId, chunkIndex).get();
+  if (!snap.exists) return null;
+  return {
+    status: (asString(snap.get('status')) || 'uploading') as ChunkStatus,
+    storagePath: asStringOrNull(snap.get('storagePath')),
+    contentType: asStringOrNull(snap.get('contentType')),
+    expectedSizeBytes: asNumberOrNull(snap.get('sizeBytes')),
+  };
+}
+
+export async function markChunkUploaded(
+  sessionId: string,
+  chunkIndex: number,
+  durationSeconds: number,
+  actorUid: string,
+): Promise<void> {
+  await chunkDocRef(sessionId, chunkIndex).update({
+    status: 'uploaded' satisfies ChunkStatus,
+    durationSeconds,
+    updatedAt: new Date(),
+    updatedBy: actorUid,
+  });
+}
+
+export async function markChunkUploadFailed(
+  sessionId: string,
+  chunkIndex: number,
+  actorUid: string,
+): Promise<void> {
+  await chunkDocRef(sessionId, chunkIndex).update({
+    status: 'failed' satisfies ChunkStatus,
+    updatedAt: new Date(),
+    updatedBy: actorUid,
+  });
+}
+
+/** Ordered by chunkIndex — used by `finalizeSessionRecording` to verify every chunk actually landed. */
+export async function findSessionChunks(sessionId: string): Promise<AiSessionChunk[]> {
+  const snap = await adminDb()
+    .collection(SESSIONS_COLLECTION)
+    .doc(sessionId)
+    .collection(CHUNKS_SUBCOLLECTION)
+    .orderBy('chunkIndex', 'asc')
+    .get();
+  return snap.docs.map(toChunk);
+}
+
+/** Confirms every expected chunk uploaded and enqueues processing — the automatic pipeline's entry point. */
+export async function finalizeSessionAndEnqueue(
   sessionId: string,
   sessionTitle: string,
-  durationSeconds: number,
+  totalChunks: number,
+  totalDurationSeconds: number,
   actorUid: string,
 ): Promise<string> {
   const db = adminDb();
@@ -248,7 +344,8 @@ export async function markSessionRecordedAndEnqueue(
   await db.runTransaction(async (tx) => {
     tx.update(db.collection(SESSIONS_COLLECTION).doc(sessionId), {
       status: 'processing' satisfies AiSessionStatus,
-      durationSeconds,
+      totalChunks,
+      durationSeconds: totalDurationSeconds,
       endedAt: FieldValue.serverTimestamp(),
       processingJobId: jobRef.id,
       updatedAt: now,
@@ -260,6 +357,8 @@ export async function markSessionRecordedAndEnqueue(
       sessionTitle,
       stage: 'queued' satisfies AiJobStage,
       progressPercent: 0,
+      chunksCompleted: 0,
+      chunksTotal: totalChunks,
       attempts: 0,
       error: null,
       speechProvider: null,
@@ -270,17 +369,6 @@ export async function markSessionRecordedAndEnqueue(
   });
 
   return jobRef.id;
-}
-
-export async function markSessionUploadFailed(sessionId: string, actorUid: string): Promise<void> {
-  await adminDb()
-    .collection(SESSIONS_COLLECTION)
-    .doc(sessionId)
-    .update({
-      status: 'failed' satisfies AiSessionStatus,
-      updatedAt: new Date(),
-      updatedBy: actorUid,
-    });
 }
 
 export async function softDeleteSession(sessionId: string, actorUid: string): Promise<void> {
@@ -301,6 +389,8 @@ function toJob(
     sessionTitle: asString(data.sessionTitle),
     stage: (asString(data.stage) || 'queued') as AiJobStage,
     progressPercent: asNumberOrNull(data.progressPercent) ?? 0,
+    chunksCompleted: asNumberOrNull(data.chunksCompleted),
+    chunksTotal: asNumberOrNull(data.chunksTotal),
     attempts: asNumberOrNull(data.attempts) ?? 0,
     error: asStringOrNull(data.error),
     speechProvider: asStringOrNull(data.speechProvider),

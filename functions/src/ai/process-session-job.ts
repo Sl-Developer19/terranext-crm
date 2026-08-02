@@ -6,23 +6,30 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { reportFunctionError } from '../observability/report-error';
 import { writeSystemEvent } from '../lib/system-events';
 import {
+  mergeChunkTranscripts,
+  selectChunksToProcess,
+  type ChunkTranscriptInput,
+} from './chunk-pipeline';
+import {
   GEMINI_API_KEY,
   getSpeechProvider,
   getSummaryProvider,
   OPENAI_API_KEY,
 } from './providers/factory';
-import type { TranscriptionResult } from './providers/types';
+import type { TranscriptSegment } from './providers/types';
 import { withRetry } from './retry-with-backoff';
 
 /**
- * The automatic pipeline (AI Session Intelligence Proposal): once a trainer
- * stops recording, the Next.js app writes an `aiProcessingJobs` doc with
- * `stage: 'queued'` — nothing after that point requires a click. This
- * Firestore write trigger picks it up, runs speech-to-text → trainer/student
- * classification → AI summary → save, and updates the session, transcript,
- * summary, and daily analytics rollup as it goes. `retryProcessingJob`
- * (server action) re-enters the same trigger by writing `stage: 'queued'`
- * again.
+ * The automatic pipeline (AI Session Intelligence Proposal, extended for
+ * long sessions up to 90 minutes): once a trainer stops recording, the
+ * Next.js app writes an `aiProcessingJobs` doc with `stage: 'queued'` —
+ * nothing after that point requires a click. This Firestore write trigger
+ * picks it up and, per chunk (~10 minutes each): downloads only that
+ * chunk's audio, transcribes it, and records the result on the chunk doc.
+ * Once every chunk is transcribed, they're merged into one session-level
+ * transcript, summarized once, and saved — exactly the single-file flow
+ * this pipeline always had, just fed by many small chunks instead of one
+ * large recording never sent to a provider in a single request.
  *
  * Cloud Functions Firestore triggers are at-least-once, not exactly-once —
  * the same write can legitimately invoke this function twice. `claimJob`
@@ -30,15 +37,23 @@ import { withRetry } from './retry-with-backoff';
  * `stage` away from `'queued'` inside a transaction, so a second concurrent
  * invocation reads a stage that is no longer `'queued'` and exits without
  * doing any work (no double API calls, no double-counted analytics).
+ *
+ * Chunk-level resumability: `selectChunksToProcess` skips any chunk already
+ * marked `'transcribed'`, so if this function fails partway through a long
+ * session (timeout, transient error) and `retryProcessingJob` re-queues the
+ * job, the retried run downloads and transcribes only the chunks that
+ * didn't finish — never the whole recording again.
  */
 
-type JobStage = 'queued' | 'transcribing' | 'analyzing' | 'saving' | 'completed' | 'failed';
+type JobStage =
+  'queued' | 'transcribing' | 'merging' | 'analyzing' | 'saving' | 'completed' | 'failed';
 
 const STAGE_PROGRESS: Record<JobStage, number> = {
   queued: 0,
-  transcribing: 25,
-  analyzing: 50,
-  saving: 75,
+  transcribing: 15,
+  merging: 60,
+  analyzing: 70,
+  saving: 90,
   completed: 100,
   failed: 0,
 };
@@ -52,14 +67,38 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+interface ChunkDocData {
+  chunkIndex: number;
+  status: 'uploading' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed';
+  storagePath: string | null;
+  contentType: string | null;
+  startOffsetSec: number;
+  language: string | undefined;
+  segments: TranscriptSegment[] | undefined;
+}
+
+function readChunkDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): ChunkDocData {
+  const data = doc.data();
+  return {
+    chunkIndex: (data.chunkIndex as number | undefined) ?? 0,
+    status: (data.status as ChunkDocData['status'] | undefined) ?? 'uploading',
+    storagePath: (data.storagePath as string | undefined) ?? null,
+    contentType: (data.contentType as string | undefined) ?? null,
+    startOffsetSec: (data.startOffsetSec as number | undefined) ?? 0,
+    language: data.language as string | undefined,
+    segments: data.segments as TranscriptSegment[] | undefined,
+  };
+}
+
 export const processAiSessionJob = onDocumentWritten(
   {
     document: 'aiProcessingJobs/{jobId}',
     secrets: [GEMINI_API_KEY, OPENAI_API_KEY],
-    // Downloading + base64-encoding a large audio file needs real headroom;
-    // a full pipeline run (download, transcribe, summarize) can run long
-    // against a real provider. Both are event-driven (Eventarc/Cloud Run
-    // backed), so raising them here is a config change only.
+    // Only one chunk's audio (a few MB in the realistic case, capped at
+    // 14MB) is ever held in memory at a time, but a 90-minute, 9-chunk
+    // session run against a real provider can still take a while end to
+    // end — both settings are event-driven (Eventarc/Cloud Run backed), so
+    // raising them here is a config change only, not an architecture one.
     memory: '1GiB',
     timeoutSeconds: 540,
   },
@@ -82,6 +121,7 @@ export const processAiSessionJob = onDocumentWritten(
     const jobRef = db.collection('aiProcessingJobs').doc(jobId);
     const sessionRef = db.collection('aiSessions').doc(sessionId);
     const transcriptRef = db.collection('aiTranscripts').doc(sessionId);
+    const chunksRef = sessionRef.collection('chunks');
 
     const claimed = await db.runTransaction(async (tx) => {
       const snap = await tx.get(jobRef);
@@ -105,50 +145,69 @@ export const processAiSessionJob = onDocumentWritten(
 
     try {
       const sessionSnap = await sessionRef.get();
-      const audioStoragePath = sessionSnap.get('audioStoragePath') as string | undefined;
-      const audioContentType =
-        (sessionSnap.get('audioContentType') as string | undefined) ?? 'audio/webm';
       const durationSeconds = (sessionSnap.get('durationSeconds') as number | undefined) ?? 0;
-      if (!audioStoragePath) throw new Error('Session has no recorded audio to process.');
 
-      // Resumable retry: a prior attempt may have already produced a
-      // transcript and then failed on summarization. Reusing it avoids
-      // re-downloading the audio and re-billing the speech provider for
-      // work that already succeeded.
-      const existingTranscript = await transcriptRef.get();
-      let transcription: TranscriptionResult;
-      let speechProviderName: string;
+      const chunkSnap = await chunksRef.orderBy('chunkIndex', 'asc').get();
+      const chunks = chunkSnap.docs.map(readChunkDoc);
+      if (chunks.length === 0) throw new Error('Session has no recorded audio chunks to process.');
 
-      if (existingTranscript.exists) {
-        const data = existingTranscript.data()!;
-        transcription = {
-          fullText: (data.fullText as string) ?? '',
-          language: (data.language as string) ?? 'en',
-          segments: (data.segments as TranscriptionResult['segments']) ?? [],
-        };
-        speechProviderName = 'reused (cached transcript)';
-      } else {
-        const speechProvider = getSpeechProvider();
-        speechProviderName = speechProvider.name;
-        const [audioBuffer] = await getStorage().bucket().file(audioStoragePath).download();
-        transcription = await withRetry(() =>
-          speechProvider.transcribe({ audioBuffer, contentType: audioContentType, sessionTitle }),
+      const pending = selectChunksToProcess(chunks);
+      const speechProvider = pending.length > 0 ? getSpeechProvider() : null;
+      let chunksCompleted = chunks.length - pending.length;
+
+      for (const chunk of pending) {
+        if (!chunk.storagePath) throw new Error(`Chunk ${chunk.chunkIndex} has no recorded audio.`);
+
+        const [audioBuffer] = await getStorage().bucket().file(chunk.storagePath).download();
+        const transcription = await withRetry(() =>
+          speechProvider!.transcribe({
+            audioBuffer,
+            contentType: chunk.contentType ?? 'audio/webm',
+            sessionTitle,
+          }),
         );
 
-        await transcriptRef.set({
-          schemaVersion: 1,
-          sessionId,
+        await chunksRef.doc(String(chunk.chunkIndex)).update({
+          status: 'transcribed',
           language: transcription.language,
-          fullText: transcription.fullText,
           segments: transcription.segments,
-          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: new Date(),
+        });
+        chunk.language = transcription.language;
+        chunk.segments = transcription.segments;
+
+        chunksCompleted += 1;
+        await jobRef.update({
+          chunksCompleted,
+          updatedAt: new Date(),
         });
       }
+
+      await setStage('merging', { chunksCompleted, chunksTotal: chunks.length });
+
+      const mergeInput: ChunkTranscriptInput[] = chunks.map((chunk) => ({
+        chunkIndex: chunk.chunkIndex,
+        startOffsetSec: chunk.startOffsetSec,
+        language: chunk.language ?? 'en',
+        segments: chunk.segments ?? [],
+      }));
+      const merged = mergeChunkTranscripts(mergeInput);
+
+      await transcriptRef.set({
+        schemaVersion: 1,
+        sessionId,
+        language: merged.language,
+        fullText: merged.fullText,
+        segments: merged.segments,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+      const speechProviderName = speechProvider?.name ?? 'reused (cached chunk transcripts)';
       await setStage('analyzing', { speechProvider: speechProviderName });
 
       const summaryProvider = getSummaryProvider();
       const summary = await withRetry(() =>
-        summaryProvider.summarize({ transcriptText: transcription.fullText, sessionTitle }),
+        summaryProvider.summarize({ transcriptText: merged.fullText, sessionTitle }),
       );
 
       await db.collection('aiSummaries').doc(sessionId).set({
@@ -192,7 +251,7 @@ export const processAiSessionJob = onDocumentWritten(
             date: today,
             sessionsCompleted: FieldValue.increment(1),
             recordingSeconds: FieldValue.increment(durationSeconds),
-            wordsTranscribed: FieldValue.increment(countWords(transcription.fullText)),
+            wordsTranscribed: FieldValue.increment(countWords(merged.fullText)),
           },
           { merge: true },
         );

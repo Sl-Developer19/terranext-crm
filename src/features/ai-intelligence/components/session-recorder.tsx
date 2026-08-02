@@ -17,16 +17,27 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { confirmAudioUpload, requestAudioUploadTicket } from '../actions/record-audio';
+import {
+  confirmChunkUpload,
+  finalizeSessionRecording,
+  requestChunkUploadTicket,
+} from '../actions/record-audio';
 import { formatDuration } from '../logic';
 import {
   ALLOWED_AUDIO_CONTENT_TYPES,
+  CHUNK_DURATION_SECONDS,
+  MAX_CHUNKS_PER_SESSION,
+  MAX_SESSION_DURATION_SECONDS,
   type AiSession,
   type AllowedAudioContentType,
 } from '../schema';
 
 type RecorderStatus = 'idle' | 'recording' | 'uploading' | 'error';
-const CHUNK_MS = 1000;
+type StopReason = 'rollover' | 'final';
+
+const MEDIA_RECORDER_TIMESLICE_MS = 1000;
+const CHUNK_UPLOAD_MAX_ATTEMPTS = 3;
+const CHUNK_UPLOAD_RETRY_DELAY_MS = 1000;
 
 function pickSupportedMimeType(): string | undefined {
   if (typeof MediaRecorder === 'undefined') return undefined;
@@ -42,11 +53,22 @@ function normalizeContentType(mimeType: string): AllowedAudioContentType {
 }
 
 /**
- * The recording screen (AI Knowledge Capture Room Hardware Requirements):
- * device selector, live level meter, timer, and Start/Stop only — there is
- * no Upload or Process control anywhere in this component. Stopping the
- * recording drives the signed-upload ticket, the PUT, and the confirm call
- * that enqueues the automatic pipeline, in sequence, with no further input.
+ * The recording screen (AI Knowledge Capture Room Hardware Requirements),
+ * now supporting the full 45–90 minute classroom range: internally, the
+ * recorder rolls over to a brand-new `MediaRecorder` on the same
+ * microphone stream every `CHUNK_DURATION_SECONDS` (~10 minutes), uploading
+ * each finished chunk in the background while the next one is already being
+ * captured. None of that is visible — device selector, live level meter,
+ * timer, and Start/Stop are the entire interface, exactly as before. There
+ * is still no Upload or Process control anywhere in this component.
+ *
+ * The rollover technique (stop one MediaRecorder, immediately start a new
+ * one on the same stream) is what makes each chunk an independently valid,
+ * decodable audio file — concatenated `ondataavailable` blobs from a single
+ * continuous recorder are not independently valid without the others. The
+ * unavoidable cost is a sub-100ms gap in the recording at each rollover
+ * boundary, the standard tradeoff of this approach and far preferable to
+ * ever holding 90 minutes of audio in memory at once client- or server-side.
  */
 export function SessionRecorder({ session }: { session: AiSession }) {
   const router = useRouter();
@@ -59,11 +81,18 @@ export function SessionRecorder({ session }: { session: AiSession }) {
 
   const mediaStreamRef = React.useRef<MediaStream | null>(null);
   const recorderRef = React.useRef<MediaRecorder | null>(null);
-  const chunksRef = React.useRef<Blob[]>([]);
+  const chunkBufferRef = React.useRef<Blob[]>([]);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const meterIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const timerIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const rolloverTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxDurationTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const elapsedRef = React.useRef(0);
+  const chunkIndexRef = React.useRef(0);
+  const chunkStartOffsetRef = React.useRef(0);
+  const stopReasonRef = React.useRef<StopReason>('rollover');
+  const uploadPromisesRef = React.useRef<Array<Promise<boolean>>>([]);
+  const preferredMimeTypeRef = React.useRef<string | undefined>(undefined);
 
   const refreshDevices = React.useCallback(async () => {
     try {
@@ -84,8 +113,12 @@ export function SessionRecorder({ session }: { session: AiSession }) {
   const releaseCaptureResources = React.useCallback(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     if (meterIntervalRef.current) clearInterval(meterIntervalRef.current);
+    if (rolloverTimeoutRef.current) clearTimeout(rolloverTimeoutRef.current);
+    if (maxDurationTimeoutRef.current) clearTimeout(maxDurationTimeoutRef.current);
     timerIntervalRef.current = null;
     meterIntervalRef.current = null;
+    rolloverTimeoutRef.current = null;
+    maxDurationTimeoutRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -99,6 +132,144 @@ export function SessionRecorder({ session }: { session: AiSession }) {
     void refreshDevices();
     return releaseCaptureResources;
   }, [refreshDevices, releaseCaptureResources]);
+
+  /** Ticket → PUT → confirm for one chunk, with bounded retry — a classroom
+   * Wi-Fi hiccup on one ~10-minute segment must not force the trainer to
+   * notice, intervene, or lose the rest of a 90-minute session. */
+  async function uploadChunkWithRetry(
+    chunkIndex: number,
+    blob: Blob,
+    startOffsetSec: number,
+    durationSeconds: number,
+  ): Promise<boolean> {
+    const contentType = normalizeContentType(blob.type);
+
+    for (let attempt = 1; attempt <= CHUNK_UPLOAD_MAX_ATTEMPTS; attempt++) {
+      try {
+        const ticket = await requestChunkUploadTicket({
+          sessionId: session.id,
+          chunkIndex,
+          contentType,
+          sizeBytes: blob.size,
+          startOffsetSec,
+        });
+        if (!ticket.ok) throw new Error(ticket.error.message);
+
+        const response = await fetch(ticket.data.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': ticket.data.contentType },
+          body: blob,
+        });
+        if (!response.ok) throw new Error('Chunk upload failed');
+
+        const confirmed = await confirmChunkUpload({
+          sessionId: session.id,
+          chunkIndex,
+          durationSeconds,
+        });
+        if (!confirmed.ok) throw new Error(confirmed.error.message);
+        if (confirmed.data.status === 'failed') throw new Error('Chunk failed verification');
+
+        return true;
+      } catch {
+        if (attempt === CHUNK_UPLOAD_MAX_ATTEMPTS) {
+          toast.error(
+            `Recording segment ${chunkIndex + 1} couldn't be saved after several attempts — check your connection.`,
+          );
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, CHUNK_UPLOAD_RETRY_DELAY_MS * attempt));
+      }
+    }
+    return false;
+  }
+
+  function startNextChunkRecorder() {
+    const stream = mediaStreamRef.current;
+    if (!stream) return;
+
+    chunkBufferRef.current = [];
+    const recorder = new MediaRecorder(
+      stream,
+      preferredMimeTypeRef.current ? { mimeType: preferredMimeTypeRef.current } : undefined,
+    );
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunkBufferRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      handleChunkRecorderStop(recorder.mimeType || preferredMimeTypeRef.current || 'audio/webm');
+    };
+    recorder.start(MEDIA_RECORDER_TIMESLICE_MS);
+    recorderRef.current = recorder;
+
+    // The last allowed chunk gets no rollover of its own — only the
+    // max-duration auto-stop (or the trainer) may end it. Without this, a
+    // 90-minute session landing exactly on a chunk boundary could schedule
+    // a rollover and the auto-stop in the same instant, producing a 10th
+    // chunk one over the business-ceiling-derived limit.
+    const isLastAllowedChunk = chunkIndexRef.current >= MAX_CHUNKS_PER_SESSION - 1;
+    if (!isLastAllowedChunk) {
+      rolloverTimeoutRef.current = setTimeout(rolloverToNextChunk, CHUNK_DURATION_SECONDS * 1000);
+    }
+  }
+
+  function rolloverToNextChunk() {
+    if (recorderRef.current?.state !== 'recording') return;
+    stopReasonRef.current = 'rollover';
+    recorderRef.current.stop();
+  }
+
+  function handleChunkRecorderStop(rawMimeType: string) {
+    const finishedChunkIndex = chunkIndexRef.current;
+    const finishedStartOffsetSec = chunkStartOffsetRef.current;
+    const finishedDurationSeconds = Math.max(1, elapsedRef.current - finishedStartOffsetSec);
+    const contentType = normalizeContentType(rawMimeType);
+    const blob = new Blob(chunkBufferRef.current, { type: contentType });
+
+    uploadPromisesRef.current.push(
+      uploadChunkWithRetry(
+        finishedChunkIndex,
+        blob,
+        finishedStartOffsetSec,
+        finishedDurationSeconds,
+      ),
+    );
+
+    if (stopReasonRef.current === 'rollover') {
+      chunkIndexRef.current += 1;
+      chunkStartOffsetRef.current = elapsedRef.current;
+      startNextChunkRecorder();
+    } else {
+      void finalizeAfterStop(finishedChunkIndex + 1);
+    }
+  }
+
+  async function finalizeAfterStop(totalChunks: number) {
+    const totalDurationSeconds = elapsedRef.current;
+    const results = await Promise.all(uploadPromisesRef.current);
+
+    if (results.some((succeeded) => !succeeded)) {
+      setStatus('error');
+      setErrorMessage(
+        'One or more recording segments could not be saved. Please contact support before deleting this session — do not record it again from scratch.',
+      );
+      return;
+    }
+
+    const outcome = await finalizeSessionRecording({
+      sessionId: session.id,
+      totalChunks,
+      totalDurationSeconds,
+    });
+    if (!outcome.ok) {
+      toast.error(outcome.error.message);
+      setStatus('error');
+      return;
+    }
+
+    toast.success('Recording saved — transcription and AI analysis started automatically.');
+    router.refresh();
+  }
 
   async function handleStart() {
     setErrorMessage(null);
@@ -126,20 +297,10 @@ export function SessionRecorder({ session }: { session: AiSession }) {
         setLevel(Math.min(100, Math.round((avg / 255) * 100)));
       }, 100);
 
-      const preferredMimeType = pickSupportedMimeType();
-      const recorder = new MediaRecorder(
-        stream,
-        preferredMimeType ? { mimeType: preferredMimeType } : undefined,
-      );
-      chunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-      recorder.onstop = () => {
-        void handleUpload(recorder.mimeType || preferredMimeType || 'audio/webm');
-      };
-      recorder.start(CHUNK_MS);
-      recorderRef.current = recorder;
+      preferredMimeTypeRef.current = pickSupportedMimeType();
+      chunkIndexRef.current = 0;
+      chunkStartOffsetRef.current = 0;
+      uploadPromisesRef.current = [];
 
       elapsedRef.current = 0;
       setElapsed(0);
@@ -148,6 +309,14 @@ export function SessionRecorder({ session }: { session: AiSession }) {
         setElapsed(elapsedRef.current);
       }, 1000);
 
+      maxDurationTimeoutRef.current = setTimeout(() => {
+        toast.warning(
+          `Maximum recording length (${MAX_SESSION_DURATION_SECONDS / 60} minutes) reached — stopping automatically.`,
+        );
+        handleStopClick();
+      }, MAX_SESSION_DURATION_SECONDS * 1000);
+
+      startNextChunkRecorder();
       setStatus('recording');
     } catch (error) {
       // Whatever got acquired before the failure (mic stream, AudioContext)
@@ -162,52 +331,11 @@ export function SessionRecorder({ session }: { session: AiSession }) {
   }
 
   function handleStopClick() {
-    recorderRef.current?.stop();
+    if (status !== 'recording' || !recorderRef.current) return;
+    stopReasonRef.current = 'final';
+    recorderRef.current.stop();
     releaseCaptureResources();
-  }
-
-  async function handleUpload(rawMimeType: string) {
     setStatus('uploading');
-    const contentType = normalizeContentType(rawMimeType);
-    const blob = new Blob(chunksRef.current, { type: contentType });
-    const durationSeconds = elapsedRef.current;
-
-    try {
-      const ticket = await requestAudioUploadTicket({
-        sessionId: session.id,
-        contentType,
-        sizeBytes: blob.size,
-      });
-      if (!ticket.ok) {
-        toast.error(ticket.error.message);
-        setStatus('error');
-        return;
-      }
-
-      const response = await fetch(ticket.data.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': ticket.data.contentType },
-        body: blob,
-      });
-      if (!response.ok) {
-        toast.error('The recording could not be uploaded. Please try again.');
-        setStatus('error');
-        return;
-      }
-
-      const confirmed = await confirmAudioUpload({ sessionId: session.id, durationSeconds });
-      if (!confirmed.ok) {
-        toast.error(confirmed.error.message);
-        setStatus('error');
-        return;
-      }
-
-      toast.success('Recording saved — transcription and AI analysis started automatically.');
-      router.refresh();
-    } catch {
-      toast.error('Network problem while saving the recording.');
-      setStatus('error');
-    }
   }
 
   if (session.status !== 'draft') {
@@ -272,6 +400,7 @@ export function SessionRecorder({ session }: { session: AiSession }) {
           <p className="text-xs text-muted-foreground">
             USB audio interfaces, wireless lapel mics, and boundary conference microphones all
             appear here once connected — the browser lists them as standard audio input devices.
+            Sessions can run up to {MAX_SESSION_DURATION_SECONDS / 60} minutes.
           </p>
         </div>
 

@@ -1073,6 +1073,16 @@ service cloud.firestore {
     match /aiSessions/{sessionId} {
       allow read: if can_aiIntelligence_view();
       allow write: if false; // Admin SDK only
+
+      // ── chunks/* (long-session support: ~10-minute recording segments) ──
+      // Read: any role with `aiIntelligence:view`. Write: Admin SDK only —
+      //   chunk upload state is set by requestChunkUploadTicket/
+      //   confirmChunkUpload (server actions) and later by
+      //   processAiSessionJob as each chunk is transcribed.
+      match /chunks/{chunkId} {
+        allow read: if can_aiIntelligence_view();
+        allow write: if false; // Admin SDK only
+      }
     }
 
     // ── aiProcessingJobs/* (AI Intelligence Platform — processing queue) ───

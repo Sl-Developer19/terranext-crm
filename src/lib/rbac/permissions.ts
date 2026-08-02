@@ -44,6 +44,8 @@ export const MODULES = [
   'roles',
   'audit',
   'settings',
+  /** AI Intelligence Platform — session recording, transcription, and AI knowledge capture. */
+  'aiIntelligence',
 ] as const;
 
 export type Module = (typeof MODULES)[number];
@@ -138,6 +140,9 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('roles', 'view', 'configure'),
     ...p('audit', 'view', 'export'),
     ...p('settings', 'view', 'configure'),
+    // AI Intelligence Platform administration: full lifecycle plus the
+    // provider/retention configuration surface on /ai/settings.
+    ...p('aiIntelligence', 'view', 'create', 'update', 'export', 'configure', 'delete'),
   ],
   ops_manager: [
     ...p('dashboard', 'view', 'export'),
@@ -166,6 +171,9 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     // their referred leads through the existing leads:view/assign grants.
     ...p('growthPartners', 'view', 'create'),
     ...p('rewards', 'view'),
+    // Ops oversight of every recorded session and its generated knowledge —
+    // read plus export, no provider configuration.
+    ...p('aiIntelligence', 'view', 'export'),
   ],
   consultant: [
     ...p('dashboard', 'view'),
@@ -193,6 +201,9 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('alumni', 'view'),
     ...p('communications', 'view', 'create'),
     ...p('reports', 'view'),
+    // Coordinators oversee academic delivery — read access to session
+    // knowledge, no recording rights of their own.
+    ...p('aiIntelligence', 'view'),
   ],
   trainer: [
     ...p('dashboard', 'view'),
@@ -204,6 +215,9 @@ export const ROLE_PERMISSIONS: Record<StaffRole, readonly Permission[]> = {
     ...p('certificates', 'view'),
     ...p('communications', 'view', 'create'),
     ...p('reports', 'view'),
+    // Trainers record their own classroom sessions and see the AI knowledge
+    // generated from them — the workflow this module exists for.
+    ...p('aiIntelligence', 'view', 'create', 'update'),
   ],
   finance: [
     ...p('dashboard', 'view'),

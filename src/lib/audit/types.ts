@@ -47,10 +47,17 @@ export type AuditEntityType =
   | 'report'
   | 'settings'
   | 'growth_partner'
+  // TerraNext Community Growth Network — business/organisation referral
+  // partner, a distinct bounded context from `growth_partner`.
+  | 'community_partner'
   | 'reward_rule'
   | 'reward_ledger_entry'
   | 'wallet_transaction'
-  | 'payout_request';
+  | 'payout_request'
+  // AI Intelligence Platform (AI Session Intelligence Proposal).
+  | 'ai_session'
+  | 'ai_processing_job'
+  | 'ai_intelligence_settings';
 
 export interface AuditChange {
   before: unknown;

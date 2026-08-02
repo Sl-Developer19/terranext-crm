@@ -157,11 +157,11 @@ describe('RBAC permission map', () => {
     expect(visibleModules('trainer')).not.toContain('fees');
   });
 
-  it('among non-super roles, only system_admin may soft-delete leads or communications (ADR-009, owner decision 2026-07-25)', () => {
+  it('among non-super roles, only system_admin may soft-delete leads, communications, or AI sessions (ADR-009, owner decision 2026-07-25; widened for the AI Intelligence Platform module)', () => {
     for (const role of NON_SUPER_ROLES) {
       const deletes = [...ROLE_PERMISSIONS[role].filter((perm) => perm.endsWith(':delete'))].sort();
       if (role === 'system_admin') {
-        expect(deletes).toEqual(['communications:delete', 'leads:delete']);
+        expect(deletes).toEqual(['aiIntelligence:delete', 'communications:delete', 'leads:delete']);
       } else {
         expect(deletes, role).toEqual([]);
       }

@@ -1,4 +1,8 @@
+import { formatPaise } from '@/lib/utils/format';
+
 import type { Installment } from './schema';
+
+export { formatPaise };
 
 /**
  * Pure catalogue rules (no I/O). The fee-plan arithmetic here is the same
@@ -54,11 +58,4 @@ export function slugify(name: string): string {
  */
 export function canArchive(programmeCount: number): boolean {
   return programmeCount === 0;
-}
-
-/** Rupee display from integer paise (ADR-012). Display only — never arithmetic input. */
-export function formatPaise(paise: number): string {
-  const rupees = Math.trunc(paise / 100);
-  const remainder = Math.abs(paise % 100);
-  return `₹${rupees.toLocaleString('en-IN')}.${String(remainder).padStart(2, '0')}`;
 }

@@ -58,13 +58,5 @@
         ]
       }
     ]
-  },
-  "overrides": [
-    {
-      "files": ["src/features/*/**/*"],
-      "rules": {
-        "boundaries/entry-point": "off"
-      }
-    }
-  ]
+  }
 }

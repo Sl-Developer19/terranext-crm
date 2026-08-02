@@ -12,11 +12,14 @@ import {
   type Result,
 } from '@/lib/utils/result';
 
-import { findProcessingJobById, retryProcessingJobRecord } from '../repository';
+import { findProcessingJobById, findSessionMeta, retryProcessingJobRecord } from '../repository';
 import { retryProcessingJobSchema, type RetryProcessingJobInput } from '../schema';
 
 /** Manual retry for a failed job (Processing Queue) — resets the stage to
- * `queued`, which re-triggers `processAiSessionJob` (Firestore write trigger). */
+ * `queued`, which re-triggers `processAiSessionJob` (Firestore write trigger).
+ * Only the owning trainer or someone holding `aiIntelligence:configure` may
+ * retry — `aiIntelligence:update` alone (which every trainer has) would
+ * otherwise let any trainer interfere with another trainer's failed job. */
 export async function retryProcessingJob(
   input: RetryProcessingJobInput,
 ): Promise<Result<{ jobId: string }>> {
@@ -31,11 +34,23 @@ export async function retryProcessingJob(
   try {
     const job = await findProcessingJobById(jobId);
     if (!job) return notFoundError('Processing job not found.');
+
+    const owningSession = await findSessionMeta(job.sessionId);
+    const isOwner = owningSession?.trainerUid === session.uid;
+    if (!isOwner && !can(session.role, 'aiIntelligence:configure')) {
+      return permissionError('Only the session owner can retry this job.');
+    }
+
     if (job.stage !== 'failed') {
       return validationError({ jobId: 'Only a failed job can be retried.' });
     }
 
-    await retryProcessingJobRecord(jobId);
+    const retried = await retryProcessingJobRecord(jobId);
+    if (!retried) {
+      return validationError({
+        jobId: 'This job is no longer failed — it may already be retrying.',
+      });
+    }
 
     await writeAudit({
       actorUid: session.uid,

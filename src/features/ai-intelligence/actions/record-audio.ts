@@ -59,19 +59,24 @@ export async function requestAudioUploadTicket(
       fields[issue.path.join('.') || 'form'] ??= issue.message;
     return validationError(fields);
   }
-  const { sessionId, contentType } = parsed.data;
+  const { sessionId, contentType, sizeBytes } = parsed.data;
 
   try {
     const meta = await findSessionMeta(sessionId);
     if (!meta) return notFoundError('Session not found.');
-    if (meta.trainerUid !== session.uid && !can(session.role, 'aiIntelligence:configure')) {
+    if (meta.trainerUid !== session.uid) {
       return permissionError('Only the session owner can record against it.');
     }
     if (meta.status !== 'draft') {
       return conflictError('This session has already started recording.');
     }
 
-    const storagePath = await reserveSessionAudioPath(sessionId, contentType, session.uid);
+    const storagePath = await reserveSessionAudioPath(
+      sessionId,
+      contentType,
+      sizeBytes,
+      session.uid,
+    );
 
     const [uploadUrl] = await adminBucket()
       .file(storagePath)
@@ -102,6 +107,9 @@ export async function confirmAudioUpload(
   try {
     const meta = await findSessionUploadMeta(sessionId);
     if (!meta) return notFoundError('Session not found.');
+    if (meta.trainerUid !== session.uid) {
+      return permissionError('Only the session owner can confirm its recording.');
+    }
     if (meta.status !== 'recording') return conflictError('This session is not awaiting upload.');
     if (!meta.storagePath)
       return internalError('Recording path was not reserved for this session.');
@@ -109,6 +117,22 @@ export async function confirmAudioUpload(
     const file = adminBucket().file(meta.storagePath);
     const [exists] = await file.exists();
     if (!exists) {
+      await markSessionUploadFailed(sessionId, session.uid);
+      return ok({ status: 'failed', jobId: null });
+    }
+
+    // Verifies what actually landed against what the ticket authorized
+    // (Doc 10 §6 pattern) — the signed URL constrains Content-Type but not
+    // size, so a mismatch here is the only backstop against a client that
+    // requested a ticket for one payload and PUT a different one.
+    const [metadata] = await file.getMetadata();
+    const actualSize = Number(metadata.size ?? 0);
+    const actualType = metadata.contentType ?? '';
+    const mismatched =
+      (meta.expectedSizeBytes !== null && actualSize !== meta.expectedSizeBytes) ||
+      (meta.contentType !== null && actualType !== meta.contentType);
+    if (mismatched) {
+      await file.delete().catch(() => undefined);
       await markSessionUploadFailed(sessionId, session.uid);
       return ok({ status: 'failed', jobId: null });
     }

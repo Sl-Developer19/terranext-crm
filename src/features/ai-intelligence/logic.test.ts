@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  canTransitionSession,
   countWords,
   formatDuration,
   isTerminalJobStage,
+  JOB_STAGE_KIND,
   jobStageProgressPercent,
+  SESSION_STATUS_KIND,
+  SESSION_STATUS_LABELS,
   sessionAudioStoragePath,
   todayIsoDate,
 } from './logic';
+import { JOB_STAGES, SESSION_STATUSES } from './schema';
 
 describe('sessionAudioStoragePath', () => {
   it('maps known content types to their extension', () => {
@@ -82,18 +85,15 @@ describe('todayIsoDate', () => {
   });
 });
 
-describe('canTransitionSession', () => {
-  it('allows the documented forward path', () => {
-    expect(canTransitionSession('draft', 'recording')).toBe(true);
-    expect(canTransitionSession('recording', 'recorded')).toBe(true);
-    expect(canTransitionSession('recorded', 'processing')).toBe(true);
-    expect(canTransitionSession('processing', 'completed')).toBe(true);
-    expect(canTransitionSession('failed', 'processing')).toBe(true);
+describe('SESSION_STATUS_KIND / SESSION_STATUS_LABELS', () => {
+  it('define exactly one entry per status — a status added to the schema without a mapping here is a bug', () => {
+    expect(Object.keys(SESSION_STATUS_KIND).sort()).toEqual([...SESSION_STATUSES].sort());
+    expect(Object.keys(SESSION_STATUS_LABELS).sort()).toEqual([...SESSION_STATUSES].sort());
   });
+});
 
-  it('rejects skipping stages or moving out of a terminal state', () => {
-    expect(canTransitionSession('draft', 'completed')).toBe(false);
-    expect(canTransitionSession('completed', 'processing')).toBe(false);
-    expect(canTransitionSession('recording', 'draft')).toBe(false);
+describe('JOB_STAGE_KIND', () => {
+  it('defines exactly one entry per stage', () => {
+    expect(Object.keys(JOB_STAGE_KIND).sort()).toEqual([...JOB_STAGES].sort());
   });
 });

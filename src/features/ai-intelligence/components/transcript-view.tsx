@@ -39,9 +39,9 @@ export function TranscriptView({ transcript }: { transcript: AiTranscript | null
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+      <CardHeader className="flex-col items-stretch gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>Transcript</CardTitle>
-        <div className="relative w-64">
+        <div className="relative w-full sm:w-64">
           <Search
             className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
             aria-hidden
@@ -50,6 +50,7 @@ export function TranscriptView({ transcript }: { transcript: AiTranscript | null
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search transcript"
+            aria-label="Search transcript"
             className="pl-8"
           />
         </div>

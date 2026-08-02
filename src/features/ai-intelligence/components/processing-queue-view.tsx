@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
 
-import { StatusBadge, type StatusKind } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -18,18 +18,14 @@ import {
 } from '@/components/ui/table';
 
 import { retryProcessingJob } from '../actions/retry-processing-job';
-import { JOB_STAGE_LABELS, jobStageProgressPercent } from '../logic';
-import type { AiJobStage, AiProcessingJob } from '../schema';
+import {
+  JOB_STAGE_KIND,
+  JOB_STAGE_LABELS,
+  isTerminalJobStage,
+  jobStageProgressPercent,
+} from '../logic';
+import type { AiProcessingJob } from '../schema';
 import { AutoRefresh } from './auto-refresh';
-
-const STAGE_KIND: Record<AiJobStage, StatusKind> = {
-  queued: 'neutral',
-  transcribing: 'progress',
-  analyzing: 'progress',
-  saving: 'progress',
-  completed: 'success',
-  failed: 'danger',
-};
 
 export function ProcessingQueueView({
   jobs,
@@ -63,9 +59,11 @@ export function ProcessingQueueView({
     );
   }
 
+  const hasActiveJob = jobs.some((job) => !isTerminalJobStage(job.stage));
+
   return (
     <>
-      <AutoRefresh intervalMs={4000} />
+      {hasActiveJob ? <AutoRefresh intervalMs={4000} /> : null}
       <Table>
         <TableHeader>
           <TableRow>
@@ -83,13 +81,23 @@ export function ProcessingQueueView({
               <TableRow key={job.id}>
                 <TableCell className="font-medium">{job.sessionTitle}</TableCell>
                 <TableCell>
-                  <StatusBadge kind={STAGE_KIND[job.stage]} label={JOB_STAGE_LABELS[job.stage]} />
+                  <StatusBadge
+                    kind={JOB_STAGE_KIND[job.stage]}
+                    label={JOB_STAGE_LABELS[job.stage]}
+                  />
                   {job.stage === 'failed' && job.error ? (
                     <p className="mt-1 max-w-xs text-xs text-destructive">{job.error}</p>
                   ) : null}
                 </TableCell>
                 <TableCell>
-                  <div className="h-2 w-32 overflow-hidden rounded-full bg-secondary">
+                  <div
+                    role="progressbar"
+                    aria-valuenow={percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`${job.sessionTitle} processing progress`}
+                    className="h-2 w-32 overflow-hidden rounded-full bg-secondary"
+                  >
                     <div
                       className="h-full rounded-full bg-gold transition-[width] duration-500 ease-out"
                       style={{ width: `${percent}%` }}

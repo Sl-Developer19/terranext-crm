@@ -54,10 +54,33 @@ export function isTerminalJobStage(stage: AiJobStage): boolean {
 export const SESSION_STATUS_LABELS: Record<AiSessionStatus, string> = {
   draft: 'Draft',
   recording: 'Recording',
-  recorded: 'Recorded',
   processing: 'Processing',
   completed: 'Completed',
   failed: 'Failed',
+};
+
+/** Shared badge tone per status — the single source every list/detail view reads from. */
+export const SESSION_STATUS_KIND: Record<
+  AiSessionStatus,
+  'info' | 'progress' | 'success' | 'danger' | 'neutral'
+> = {
+  draft: 'neutral',
+  recording: 'progress',
+  processing: 'progress',
+  completed: 'success',
+  failed: 'danger',
+};
+
+export const JOB_STAGE_KIND: Record<
+  AiJobStage,
+  'info' | 'progress' | 'success' | 'danger' | 'neutral'
+> = {
+  queued: 'neutral',
+  transcribing: 'progress',
+  analyzing: 'progress',
+  saving: 'progress',
+  completed: 'success',
+  failed: 'danger',
 };
 
 export const JOB_STAGE_LABELS: Record<AiJobStage, string> = {
@@ -86,17 +109,4 @@ export function countWords(text: string): number {
 
 export function todayIsoDate(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
-}
-
-/** A session may only move to 'recording' from 'draft', and to 'recorded' from 'recording'. */
-export function canTransitionSession(from: AiSessionStatus, to: AiSessionStatus): boolean {
-  const allowed: Record<AiSessionStatus, AiSessionStatus[]> = {
-    draft: ['recording', 'recorded'],
-    recording: ['recorded'],
-    recorded: ['processing'],
-    processing: ['completed', 'failed'],
-    completed: [],
-    failed: ['processing'],
-  };
-  return allowed[from]?.includes(to) ?? false;
 }

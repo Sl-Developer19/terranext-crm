@@ -77,15 +77,28 @@ export function SessionRecorder({ session }: { session: AiSession }) {
     }
   }, []);
 
+  /** Stops every acquired hardware/timer resource — the mic light must go
+   * off whenever the recorder is not actively recording, including when
+   * setup fails partway through (e.g. getUserMedia succeeds but the
+   * AudioContext or MediaRecorder construction throws). */
+  const releaseCaptureResources = React.useCallback(() => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    if (meterIntervalRef.current) clearInterval(meterIntervalRef.current);
+    timerIntervalRef.current = null;
+    meterIntervalRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => undefined);
+    }
+    audioContextRef.current = null;
+    setLevel(0);
+  }, []);
+
   React.useEffect(() => {
     void refreshDevices();
-    return () => {
-      if (meterIntervalRef.current) clearInterval(meterIntervalRef.current);
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-      audioContextRef.current?.close().catch(() => undefined);
-      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, [refreshDevices]);
+    return releaseCaptureResources;
+  }, [refreshDevices, releaseCaptureResources]);
 
   async function handleStart() {
     setErrorMessage(null);
@@ -137,6 +150,10 @@ export function SessionRecorder({ session }: { session: AiSession }) {
 
       setStatus('recording');
     } catch (error) {
+      // Whatever got acquired before the failure (mic stream, AudioContext)
+      // must be released here too — otherwise the browser's mic indicator
+      // stays lit and a retry opens a second stream on top of the first.
+      releaseCaptureResources();
       setErrorMessage(
         error instanceof Error ? error.message : 'Could not access the selected microphone.',
       );
@@ -146,11 +163,7 @@ export function SessionRecorder({ session }: { session: AiSession }) {
 
   function handleStopClick() {
     recorderRef.current?.stop();
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    if (meterIntervalRef.current) clearInterval(meterIntervalRef.current);
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    audioContextRef.current?.close().catch(() => undefined);
-    setLevel(0);
+    releaseCaptureResources();
   }
 
   async function handleUpload(rawMimeType: string) {
@@ -263,8 +276,15 @@ export function SessionRecorder({ session }: { session: AiSession }) {
         </div>
 
         <div className="space-y-2">
-          <Label>Audio level</Label>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-secondary">
+          <Label id="recorder-level-label">Audio level</Label>
+          <div
+            role="progressbar"
+            aria-labelledby="recorder-level-label"
+            aria-valuenow={level}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="h-2.5 w-full overflow-hidden rounded-full bg-secondary"
+          >
             <div
               className="h-full rounded-full bg-gold transition-[width] duration-100 ease-out"
               style={{ width: `${level}%` }}

@@ -11,9 +11,12 @@ export { SummaryView } from './components/summary-view';
 export { TranscriptView } from './components/transcript-view';
 
 export {
+  JOB_STAGE_KIND,
   JOB_STAGE_LABELS,
+  SESSION_STATUS_KIND,
   SESSION_STATUS_LABELS,
   formatDuration,
+  isTerminalJobStage,
   jobStageProgressPercent,
 } from './logic';
 export {

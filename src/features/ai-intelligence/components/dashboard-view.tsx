@@ -2,22 +2,13 @@ import { Mic } from 'lucide-react';
 import Link from 'next/link';
 
 import { StatCard } from '@/components/ui/stat-card';
-import { StatusBadge, type StatusKind } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 
-import { SESSION_STATUS_LABELS } from '../logic';
-import type { AiDashboardStats, AiSession, AiSessionStatus } from '../schema';
+import { SESSION_STATUS_KIND, SESSION_STATUS_LABELS } from '../logic';
+import type { AiDashboardStats, AiSession } from '../schema';
 import { AutoRefresh } from './auto-refresh';
-
-const STATUS_KIND: Record<AiSessionStatus, StatusKind> = {
-  draft: 'neutral',
-  recording: 'progress',
-  recorded: 'progress',
-  processing: 'progress',
-  completed: 'success',
-  failed: 'danger',
-};
 
 export function DashboardView({
   stats,
@@ -82,7 +73,7 @@ export function DashboardView({
                     <p className="text-xs text-muted-foreground">{session.trainerName}</p>
                   </div>
                   <StatusBadge
-                    kind={STATUS_KIND[session.status]}
+                    kind={SESSION_STATUS_KIND[session.status]}
                     label={SESSION_STATUS_LABELS[session.status]}
                   />
                 </li>

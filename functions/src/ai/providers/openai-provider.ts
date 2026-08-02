@@ -1,5 +1,5 @@
+import { extractJson, toSpeakerRole } from './json';
 import type {
-  SpeakerRole,
   SpeechProvider,
   SummaryProvider,
   SummaryResult,
@@ -23,15 +23,6 @@ function extensionForContentType(contentType: string): string {
   if (contentType.includes('mp4')) return 'm4a';
   if (contentType.includes('ogg')) return 'ogg';
   return 'bin';
-}
-
-function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return JSON.parse(((fenced ? fenced[1] : text) ?? text).trim());
-}
-
-function toSpeakerRole(value: unknown): SpeakerRole {
-  return value === 'trainer' || value === 'student' ? value : 'unknown';
 }
 
 interface WhisperSegment {

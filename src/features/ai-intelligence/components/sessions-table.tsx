@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
 
-import { StatusBadge, type StatusKind } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -21,17 +21,8 @@ import {
 } from '@/components/ui/table';
 
 import { deleteSession } from '../actions/delete-session';
-import { formatDuration, SESSION_STATUS_LABELS } from '../logic';
-import type { AiSession, AiSessionStatus } from '../schema';
-
-const STATUS_KIND: Record<AiSessionStatus, StatusKind> = {
-  draft: 'neutral',
-  recording: 'progress',
-  recorded: 'progress',
-  processing: 'progress',
-  completed: 'success',
-  failed: 'danger',
-};
+import { formatDuration, SESSION_STATUS_KIND, SESSION_STATUS_LABELS } from '../logic';
+import type { AiSession } from '../schema';
 
 export function SessionsTable({
   sessions,
@@ -94,7 +85,7 @@ export function SessionsTable({
             </TableCell>
             <TableCell>
               <StatusBadge
-                kind={STATUS_KIND[session.status]}
+                kind={SESSION_STATUS_KIND[session.status]}
                 label={SESSION_STATUS_LABELS[session.status]}
               />
             </TableCell>

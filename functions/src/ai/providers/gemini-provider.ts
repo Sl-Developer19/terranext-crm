@@ -1,5 +1,5 @@
+import { extractJson, toSpeakerRole } from './json';
 import type {
-  SpeakerRole,
   SpeechProvider,
   SummaryProvider,
   SummaryResult,
@@ -15,12 +15,6 @@ import type {
  */
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-
-function extractJson(text: string): unknown {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : text;
-  return JSON.parse((candidate ?? text).trim());
-}
 
 async function generateContent(
   apiKey: string,
@@ -50,10 +44,6 @@ async function generateContent(
   const text = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
   if (!text) throw new Error('Gemini API returned no content.');
   return text;
-}
-
-function toSpeakerRole(value: unknown): SpeakerRole {
-  return value === 'trainer' || value === 'student' ? value : 'unknown';
 }
 
 export class GeminiSpeechProvider implements SpeechProvider {

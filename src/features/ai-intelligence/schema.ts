@@ -11,7 +11,6 @@ import { z } from 'zod';
 export const SESSION_STATUSES = [
   'draft',
   'recording',
-  'recorded',
   'processing',
   'completed',
   'failed',
@@ -43,7 +42,15 @@ export const ALLOWED_AUDIO_CONTENT_TYPES = [
 ] as const;
 export type AllowedAudioContentType = (typeof ALLOWED_AUDIO_CONTENT_TYPES)[number];
 
-/** 4 hours at typical spoken-word bitrates — generous ceiling for a classroom session. */
+/**
+ * 4 hours at typical spoken-word bitrates — generous ceiling for a classroom
+ * session, and the limit the recording UI itself enforces. NOTE: this is
+ * deliberately NOT tightened to match any one provider's request-size limit
+ * (OpenAI Whisper caps a single file at 25MB; Gemini's inline-audio request
+ * body is far smaller than this ceiling too) — chunked/resumable upload to
+ * the provider is a known follow-up (see production readiness report) rather
+ * than something silently enforced here by shrinking what recording accepts.
+ */
 export const MAX_AUDIO_BYTES = 750 * 1024 * 1024;
 
 const requiredText = (min: number, max: number, message: string) =>
@@ -106,9 +113,6 @@ export const deleteSessionSchema = z.object({
 });
 export type DeleteSessionInput = z.infer<typeof deleteSessionSchema>;
 
-export const AI_PROVIDER_NAMES = ['gemini', 'openai', 'mock'] as const;
-export type AiProviderName = (typeof AI_PROVIDER_NAMES)[number];
-
 export const updateAiSettingsSchema = z.object({
   autoClassifySpeakers: z.boolean(),
   notifyTrainerOnCompletion: z.boolean(),
@@ -131,6 +135,7 @@ export interface AiSession {
   deviceLabel: string | null;
   audioStoragePath: string | null;
   audioContentType: string | null;
+  audioSizeBytes: number | null;
   durationSeconds: number | null;
   processingJobId: string | null;
   transcriptId: string | null;

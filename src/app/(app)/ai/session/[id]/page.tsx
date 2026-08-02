@@ -3,31 +3,22 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 
 import { PageHeader } from '@/components/layout/page-header';
-import { StatusBadge, type StatusKind } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AutoRefresh,
+  SESSION_STATUS_KIND,
   SESSION_STATUS_LABELS,
   SessionRecorder,
   SummaryView,
   TranscriptView,
   formatDuration,
   getSessionDetail,
-  type AiSessionStatus,
 } from '@/features/ai-intelligence';
 import { requirePermission } from '@/lib/rbac/require';
 
 export const metadata: Metadata = { title: 'AI Intelligence — Session' };
-
-const STATUS_KIND: Record<AiSessionStatus, StatusKind> = {
-  draft: 'neutral',
-  recording: 'progress',
-  recorded: 'progress',
-  processing: 'progress',
-  completed: 'success',
-  failed: 'danger',
-};
 
 export default async function AiSessionDetailPage({
   params,
@@ -43,7 +34,7 @@ export default async function AiSessionDetailPage({
   const { session, transcript, summary } = await getSessionDetail(id);
   if (!session) notFound();
 
-  const isProcessing = session.status === 'processing' || session.status === 'recorded';
+  const isProcessing = session.status === 'processing';
 
   return (
     <div className="space-y-6">
@@ -55,7 +46,7 @@ export default async function AiSessionDetailPage({
         }`}
         actions={
           <StatusBadge
-            kind={STATUS_KIND[session.status]}
+            kind={SESSION_STATUS_KIND[session.status]}
             label={SESSION_STATUS_LABELS[session.status]}
           />
         }

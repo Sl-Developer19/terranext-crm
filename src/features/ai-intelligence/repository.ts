@@ -98,6 +98,7 @@ function toSession(
     deviceLabel: asStringOrNull(data.deviceLabel),
     audioStoragePath: asStringOrNull(data.audioStoragePath),
     audioContentType: asStringOrNull(data.audioContentType),
+    audioSizeBytes: asNumberOrNull(data.audioSizeBytes),
     durationSeconds: asNumberOrNull(data.durationSeconds),
     processingJobId: asStringOrNull(data.processingJobId),
     transcriptId: asStringOrNull(data.transcriptId),
@@ -163,6 +164,7 @@ export async function createSessionRecord(
     deviceLabel: input.deviceLabel,
     audioStoragePath: null,
     audioContentType: null,
+    audioSizeBytes: null,
     durationSeconds: null,
     processingJobId: null,
     transcriptId: null,
@@ -189,14 +191,22 @@ export async function findSessionMeta(
   };
 }
 
-export async function findSessionUploadMeta(
-  sessionId: string,
-): Promise<{ status: AiSessionStatus; storagePath: string | null; title: string } | null> {
+export async function findSessionUploadMeta(sessionId: string): Promise<{
+  status: AiSessionStatus;
+  trainerUid: string;
+  storagePath: string | null;
+  contentType: string | null;
+  expectedSizeBytes: number | null;
+  title: string;
+} | null> {
   const snap = await adminDb().collection(SESSIONS_COLLECTION).doc(sessionId).get();
   if (!snap.exists) return null;
   return {
     status: (asString(snap.get('status')) || 'draft') as AiSessionStatus,
+    trainerUid: asString(snap.get('trainerUid')),
     storagePath: asStringOrNull(snap.get('audioStoragePath')),
+    contentType: asStringOrNull(snap.get('audioContentType')),
+    expectedSizeBytes: asNumberOrNull(snap.get('audioSizeBytes')),
     title: asString(snap.get('title')) || 'Untitled session',
   };
 }
@@ -205,6 +215,7 @@ export async function findSessionUploadMeta(
 export async function reserveSessionAudioPath(
   sessionId: string,
   contentType: string,
+  sizeBytes: number,
   actorUid: string,
 ): Promise<string> {
   const storagePath = sessionAudioStoragePath(sessionId, contentType);
@@ -215,6 +226,7 @@ export async function reserveSessionAudioPath(
       status: 'recording' satisfies AiSessionStatus,
       audioStoragePath: storagePath,
       audioContentType: contentType,
+      audioSizeBytes: sizeBytes,
       startedAt: FieldValue.serverTimestamp(),
       updatedAt: new Date(),
       updatedBy: actorUid,
@@ -312,28 +324,27 @@ export async function findProcessingJobById(jobId: string): Promise<AiProcessing
   return snap.exists ? toJob(snap) : null;
 }
 
-export async function findProcessingJobBySessionId(
-  sessionId: string,
-): Promise<AiProcessingJob | null> {
-  const snap = await adminDb()
-    .collection(JOBS_COLLECTION)
-    .where('sessionId', '==', sessionId)
-    .orderBy('createdAt', 'desc')
-    .limit(1)
-    .get();
-  return snap.empty ? null : toJob(snap.docs[0]!);
-}
-
-export async function retryProcessingJobRecord(jobId: string): Promise<void> {
-  await adminDb()
-    .collection(JOBS_COLLECTION)
-    .doc(jobId)
-    .update({
+/**
+ * Re-queues a failed job — conditionally, inside a transaction, so two
+ * concurrent retry clicks (or two browser tabs) can't both win: the second
+ * transaction re-reads the doc and finds `stage` is no longer `'failed'`,
+ * so it's a no-op rather than a second `'queued'` write that would double-
+ * trigger the pipeline. Returns whether this call actually performed the
+ * retry.
+ */
+export async function retryProcessingJobRecord(jobId: string): Promise<boolean> {
+  const ref = adminDb().collection(JOBS_COLLECTION).doc(jobId);
+  return adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.get('stage') !== 'failed') return false;
+    tx.update(ref, {
       stage: 'queued' satisfies AiJobStage,
       error: null,
       attempts: FieldValue.increment(1),
       updatedAt: new Date(),
     });
+    return true;
+  });
 }
 
 export async function findTranscriptBySessionId(sessionId: string): Promise<AiTranscript | null> {
@@ -388,16 +399,34 @@ export async function findRecentAnalytics(days: number): Promise<AiAnalyticsDay[
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/**
+ * Counts and sums only — deliberately bypasses `findSessions()`/`toSession()`
+ * so computing four numbers doesn't also resolve a trainer/batch/programme
+ * name for every session in the collection (that N+1 lookup only earns its
+ * cost when the UI actually renders those names).
+ */
 export async function findDashboardStats(): Promise<AiDashboardStats> {
-  const sessions = await findSessions();
+  const snap = await adminDb()
+    .collection(SESSIONS_COLLECTION)
+    .where('deletedAt', '==', null)
+    .orderBy('createdAt', 'desc')
+    .limit(500)
+    .get();
   const todayPrefix = new Date().toISOString().slice(0, 10);
 
-  const todaysSessions = sessions.filter((s) => s.createdAt.slice(0, 10) === todayPrefix).length;
-  const pendingProcessing = sessions.filter(
-    (s) => s.status === 'processing' || s.status === 'recorded',
-  ).length;
-  const completedSessions = sessions.filter((s) => s.status === 'completed').length;
-  const recordingSeconds = sessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
+  let todaysSessions = 0;
+  let pendingProcessing = 0;
+  let completedSessions = 0;
+  let recordingSeconds = 0;
+
+  for (const doc of snap.docs) {
+    const status = asString(doc.get('status')) || 'draft';
+    const createdAt = toIso(doc.get('createdAt'));
+    if (createdAt.slice(0, 10) === todayPrefix) todaysSessions += 1;
+    if (status === 'processing') pendingProcessing += 1;
+    if (status === 'completed') completedSessions += 1;
+    recordingSeconds += asNumberOrNull(doc.get('durationSeconds')) ?? 0;
+  }
 
   return {
     todaysSessions,

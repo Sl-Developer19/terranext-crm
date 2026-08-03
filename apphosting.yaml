@@ -62,8 +62,22 @@ env:
     availability:
       - RUNTIME
 
+  # Transactional email (Doc 24 §1.3) — password reset, welcome/invitation,
+  # Communications module. terranextglobal.com verified (DKIM + SPF) in Resend.
+  - variable: EMAIL_PROVIDER
+    value: "resend"
+    availability:
+      - RUNTIME
+
+  - variable: EMAIL_FROM
+    value: "pp@terranextglobal.com"
+    availability:
+      - RUNTIME
+
   # Grant access to secrets in Cloud Secret Manager.
   # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.
   # See https://firebase.google.com/docs/app-hosting/configure#secret-parameters
-  # - variable: MY_SECRET
-  #   secret: mySecretRef
+  - variable: RESEND_API_KEY
+    secret: RESEND_API_KEY
+    availability:
+      - RUNTIME

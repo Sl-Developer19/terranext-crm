@@ -33,11 +33,16 @@ interface WhisperSegment {
 
 async function transcribeWithWhisper(
   apiKey: string,
+  model: string,
   audioBuffer: Buffer,
   contentType: string,
 ): Promise<{ text: string; language: string; segments: WhisperSegment[] }> {
   const form = new FormData();
-  form.append('model', 'whisper-1');
+  form.append('model', model);
+  // verbose_json is what returns the `segments` array with per-segment
+  // start/end timestamps (default granularity when timestamp_granularities
+  // is omitted) — only whisper-family models support this response format;
+  // see the model-choice note in providers/factory.ts.
   form.append('response_format', 'verbose_json');
   form.append(
     'file',
@@ -99,7 +104,10 @@ export class OpenAISpeechProvider implements SpeechProvider {
 
   constructor(
     private readonly apiKey: string,
-    private readonly chatModel: string,
+    /** Whisper-family model for the actual `/audio/transcriptions` call — see factory.ts for why this stays whisper-1. */
+    private readonly transcribeModel: string,
+    /** Chat-completions model for the trainer/student classification pass (Whisper itself has no diarization). */
+    private readonly classificationModel: string,
   ) {}
 
   async transcribe(input: {
@@ -107,7 +115,12 @@ export class OpenAISpeechProvider implements SpeechProvider {
     contentType: string;
     sessionTitle: string;
   }): Promise<TranscriptionResult> {
-    const whisper = await transcribeWithWhisper(this.apiKey, input.audioBuffer, input.contentType);
+    const whisper = await transcribeWithWhisper(
+      this.apiKey,
+      this.transcribeModel,
+      input.audioBuffer,
+      input.contentType,
+    );
 
     if (whisper.segments.length === 0) {
       return { fullText: whisper.text, language: whisper.language, segments: [] };
@@ -122,7 +135,7 @@ export class OpenAISpeechProvider implements SpeechProvider {
 
     const classification = (await chatCompletionJson(
       this.apiKey,
-      this.chatModel,
+      this.classificationModel,
       classificationPrompt,
     )) as {
       speakers?: Array<{ index?: number; speaker?: string; speakerLabel?: string }>;
@@ -151,19 +164,24 @@ export class OpenAISummaryProvider implements SummaryProvider {
 
   constructor(
     private readonly apiKey: string,
-    private readonly chatModel: string,
+    /** Chat-completions model for executive summary / key points / questions / action items — see factory.ts for the cost/quality reasoning. */
+    private readonly summaryModel: string,
   ) {}
 
   async summarize(input: { transcriptText: string; sessionTitle: string }): Promise<SummaryResult> {
     const prompt =
       `You are analysing the transcript of a training session titled "${input.sessionTitle}". ` +
-      'Respond with ONLY JSON {"executiveSummary":"<2-4 sentence summary>",' +
-      '"keyLearningPoints":["..."],"importantQuestions":["..."],"actionItems":["..."]}.\n\n' +
+      'Produce a concise executive summary, the concrete key learning points covered, ' +
+      'any important questions raised (by trainer or students), and any action items or ' +
+      'follow-ups mentioned. Respond with ONLY JSON ' +
+      '{"executiveSummary":"<2-4 sentence summary>","keyLearningPoints":["..."],' +
+      '"importantQuestions":["..."],"actionItems":["..."]}. Use an empty array for any ' +
+      'category with nothing genuinely relevant — do not invent content to fill it.\n\n' +
       `Transcript:\n${input.transcriptText}`;
 
     const parsed = (await chatCompletionJson(
       this.apiKey,
-      this.chatModel,
+      this.summaryModel,
       prompt,
     )) as Partial<SummaryResult>;
 

@@ -4,7 +4,16 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebase/admin';
 
-import { sessionChunkStoragePath } from './logic';
+import {
+  aggregateDashboardStats,
+  closeTrailingPauseEvent,
+  computeSessionDurationSeconds,
+  sessionChunkStoragePath,
+  sumPausedSeconds,
+  todayIsoDate,
+  type DashboardStatsSessionInput,
+  type PauseEventInput,
+} from './logic';
 import type {
   AiAnalyticsDay,
   AiDashboardStats,
@@ -17,6 +26,7 @@ import type {
   AiSummary,
   AiTranscript,
   ChunkStatus,
+  PauseEvent,
   TranscriptSegment,
 } from './schema';
 
@@ -37,6 +47,46 @@ function toIso(value: unknown): string {
 }
 function toIsoOrNull(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
+}
+
+/**
+ * Firestore raises FAILED_PRECONDITION (gRPC code 9) when a query needs a
+ * composite index that doesn't exist yet, or is still building after being
+ * deployed — index builds are asynchronous and can take minutes on a
+ * collection with existing documents. Detected by code rather than by
+ * `instanceof` since the admin SDK doesn't guarantee a stable error class
+ * across transports. Callers use this to degrade to an empty read instead of
+ * a 500 while the index catches up.
+ */
+function isIndexBuildingError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (code === 9 || code === 'failed-precondition') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /requires an index/i.test(message);
+}
+
+/** Reads a stored `pauseHistory` array entry back into Date-based pure-logic
+ * input — written with `new Date()` (not `serverTimestamp()`, which
+ * Firestore rejects inside array elements), so these round-trip as
+ * `Timestamp` on read like every other date field in this module. */
+function toPauseEventInput(raw: unknown): PauseEventInput {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  const pausedAt = obj.pausedAt instanceof Timestamp ? obj.pausedAt.toDate() : new Date(0);
+  const resumedAt = obj.resumedAt instanceof Timestamp ? obj.resumedAt.toDate() : null;
+  const durationSeconds = typeof obj.durationSeconds === 'number' ? obj.durationSeconds : null;
+  return { pausedAt, resumedAt, durationSeconds };
+}
+
+function toPauseHistory(raw: unknown): PauseEventInput[] {
+  return Array.isArray(raw) ? raw.map(toPauseEventInput) : [];
+}
+
+function toPauseEventReadModel(event: PauseEventInput): PauseEvent {
+  return {
+    pausedAt: event.pausedAt.toISOString(),
+    resumedAt: event.resumedAt ? event.resumedAt.toISOString() : null,
+    durationSeconds: event.durationSeconds,
+  };
 }
 
 interface Lookups {
@@ -100,6 +150,10 @@ function toSession(
     deviceLabel: asStringOrNull(data.deviceLabel),
     totalChunks: asNumberOrNull(data.totalChunks),
     durationSeconds: asNumberOrNull(data.durationSeconds),
+    sessionDurationSeconds: asNumberOrNull(data.sessionDurationSeconds),
+    pausedDurationSeconds: asNumberOrNull(data.pausedDurationSeconds) ?? 0,
+    pauseCount: asNumberOrNull(data.pauseCount) ?? 0,
+    pauseHistory: toPauseHistory(data.pauseHistory).map(toPauseEventReadModel),
     processingJobId: asStringOrNull(data.processingJobId),
     transcriptId: asStringOrNull(data.transcriptId),
     summaryId: asStringOrNull(data.summaryId),
@@ -128,7 +182,21 @@ export async function findSessions(options?: { trainerUid?: string }): Promise<A
   if (options?.trainerUid) {
     query = query.where('trainerUid', '==', options.trainerUid);
   }
-  const snap = await query.orderBy('createdAt', 'desc').limit(500).get();
+
+  let snap: FirebaseFirestore.QuerySnapshot;
+  try {
+    snap = await query.orderBy('createdAt', 'desc').limit(500).get();
+  } catch (error) {
+    if (isIndexBuildingError(error)) {
+      console.warn(
+        '[ai-intelligence] aiSessions composite index is not ready yet — returning an empty session list until it finishes building.',
+        error,
+      );
+      return [];
+    }
+    throw error;
+  }
+
   const lookups = await loadLookups(snap.docs);
   return snap.docs.map((doc) => toSession(doc, lookups));
 }
@@ -165,6 +233,10 @@ export async function createSessionRecord(
     deviceLabel: input.deviceLabel,
     totalChunks: null,
     durationSeconds: null,
+    sessionDurationSeconds: null,
+    pausedDurationSeconds: 0,
+    pauseCount: 0,
+    pauseHistory: [],
     processingJobId: null,
     transcriptId: null,
     summaryId: null,
@@ -238,6 +310,66 @@ export async function markSessionRecordingStarted(
       updatedAt: new Date(),
       updatedBy: actorUid,
     });
+}
+
+/**
+ * Pauses an actively recording session — transactional so a double-click (or
+ * a second browser tab) safely no-ops rather than double-counting a pause.
+ * The client is expected to call `MediaRecorder.pause()` only after this
+ * resolves `true`, keeping the server record authoritative even under a
+ * network race. Returns `false` if the session wasn't `recording`.
+ */
+export async function markSessionPaused(sessionId: string, actorUid: string): Promise<boolean> {
+  const ref = adminDb().collection(SESSIONS_COLLECTION).doc(sessionId);
+  return adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.get('status') !== 'recording') return false;
+
+    const history = toPauseHistory(snap.get('pauseHistory'));
+    const now = new Date();
+    const updated: PauseEventInput[] = [
+      ...history,
+      { pausedAt: now, resumedAt: null, durationSeconds: null },
+    ];
+
+    tx.update(ref, {
+      status: 'paused' satisfies AiSessionStatus,
+      pauseCount: updated.length,
+      pausedDurationSeconds: sumPausedSeconds(updated),
+      pauseHistory: updated,
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
+    return true;
+  });
+}
+
+/**
+ * Resumes a paused session, closing the trailing open pause event and
+ * folding its duration into `pausedDurationSeconds`. Same double-click/race
+ * safety as `markSessionPaused`. Returns `false` if the session wasn't
+ * `paused`.
+ */
+export async function markSessionResumed(sessionId: string, actorUid: string): Promise<boolean> {
+  const ref = adminDb().collection(SESSIONS_COLLECTION).doc(sessionId);
+  return adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.get('status') !== 'paused') return false;
+
+    const history = toPauseHistory(snap.get('pauseHistory'));
+    const now = new Date();
+    const { history: closed } = closeTrailingPauseEvent(history, now);
+
+    tx.update(ref, {
+      status: 'recording' satisfies AiSessionStatus,
+      pauseCount: closed.length,
+      pausedDurationSeconds: sumPausedSeconds(closed),
+      pauseHistory: closed,
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
+    return true;
+  });
 }
 
 /** Creates (or re-issues, on a retried upload) the chunk's storage path before the signed URL is minted. */
@@ -329,7 +461,13 @@ export async function findSessionChunks(sessionId: string): Promise<AiSessionChu
   return snap.docs.map(toChunk);
 }
 
-/** Confirms every expected chunk uploaded and enqueues processing — the automatic pipeline's entry point. */
+/**
+ * Confirms every expected chunk uploaded and enqueues processing — the
+ * automatic pipeline's entry point. Also closes out a trailing open pause
+ * event (the trainer clicked Stop while paused, never Resume) so
+ * `pausedDurationSeconds`/`sessionDurationSeconds` are correct even in that
+ * case, without requiring the client to resume first.
+ */
 export async function finalizeSessionAndEnqueue(
   sessionId: string,
   sessionTitle: string,
@@ -338,14 +476,27 @@ export async function finalizeSessionAndEnqueue(
   actorUid: string,
 ): Promise<string> {
   const db = adminDb();
+  const sessionRef = db.collection(SESSIONS_COLLECTION).doc(sessionId);
   const jobRef = db.collection(JOBS_COLLECTION).doc();
   const now = new Date();
 
   await db.runTransaction(async (tx) => {
-    tx.update(db.collection(SESSIONS_COLLECTION).doc(sessionId), {
+    const snap = await tx.get(sessionRef);
+    const history = toPauseHistory(snap.get('pauseHistory'));
+    const { history: closed } = closeTrailingPauseEvent(history, now);
+    const pausedDurationSeconds = sumPausedSeconds(closed);
+
+    tx.update(sessionRef, {
       status: 'processing' satisfies AiSessionStatus,
       totalChunks,
       durationSeconds: totalDurationSeconds,
+      pauseHistory: closed,
+      pauseCount: closed.length,
+      pausedDurationSeconds,
+      sessionDurationSeconds: computeSessionDurationSeconds(
+        totalDurationSeconds,
+        pausedDurationSeconds,
+      ),
       endedAt: FieldValue.serverTimestamp(),
       processingJobId: jobRef.id,
       updatedAt: now,
@@ -496,34 +647,34 @@ export async function findRecentAnalytics(days: number): Promise<AiAnalyticsDay[
  * cost when the UI actually renders those names).
  */
 export async function findDashboardStats(): Promise<AiDashboardStats> {
-  const snap = await adminDb()
-    .collection(SESSIONS_COLLECTION)
-    .where('deletedAt', '==', null)
-    .orderBy('createdAt', 'desc')
-    .limit(500)
-    .get();
-  const todayPrefix = new Date().toISOString().slice(0, 10);
-
-  let todaysSessions = 0;
-  let pendingProcessing = 0;
-  let completedSessions = 0;
-  let recordingSeconds = 0;
-
-  for (const doc of snap.docs) {
-    const status = asString(doc.get('status')) || 'draft';
-    const createdAt = toIso(doc.get('createdAt'));
-    if (createdAt.slice(0, 10) === todayPrefix) todaysSessions += 1;
-    if (status === 'processing') pendingProcessing += 1;
-    if (status === 'completed') completedSessions += 1;
-    recordingSeconds += asNumberOrNull(doc.get('durationSeconds')) ?? 0;
+  let snap: FirebaseFirestore.QuerySnapshot;
+  try {
+    snap = await adminDb()
+      .collection(SESSIONS_COLLECTION)
+      .where('deletedAt', '==', null)
+      .orderBy('createdAt', 'desc')
+      .limit(500)
+      .get();
+  } catch (error) {
+    if (isIndexBuildingError(error)) {
+      console.warn(
+        '[ai-intelligence] aiSessions composite index is not ready yet — returning empty dashboard stats until it finishes building.',
+        error,
+      );
+      return aggregateDashboardStats([], todayIsoDate());
+    }
+    throw error;
   }
 
-  return {
-    todaysSessions,
-    pendingProcessing,
-    completedSessions,
-    recordingHours: Math.round((recordingSeconds / 3600) * 10) / 10,
-  };
+  const summaries: DashboardStatsSessionInput[] = snap.docs.map((doc) => ({
+    status: (asString(doc.get('status')) || 'draft') as AiSessionStatus,
+    createdAtIso: toIso(doc.get('createdAt')),
+    durationSeconds: asNumberOrNull(doc.get('durationSeconds')),
+    pausedDurationSeconds: asNumberOrNull(doc.get('pausedDurationSeconds')),
+    pauseCount: asNumberOrNull(doc.get('pauseCount')),
+  }));
+
+  return aggregateDashboardStats(summaries, todayIsoDate());
 }
 
 const DEFAULT_SETTINGS: AiIntelligenceSettings = {

@@ -52,7 +52,12 @@ const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   {
     key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    // microphone=(self): the AI Intelligence Platform's session recorder
+    // calls getUserMedia({ audio: true }) from this origin's own top-level
+    // document (never embedded/cross-origin) — an empty allowlist blocks
+    // that same-origin call too, not just third-party embeds. Every other
+    // feature here is unused by the app, so stays fully disallowed.
+    value: 'camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()',
   },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
   { key: 'X-DNS-Prefetch-Control', value: 'off' },

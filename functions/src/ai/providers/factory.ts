@@ -1,26 +1,23 @@
 import { defineSecret, defineString } from 'firebase-functions/params';
 
-import { GeminiSpeechProvider, GeminiSummaryProvider } from './gemini-provider';
 import { MockSpeechProvider, MockSummaryProvider } from './mock-provider';
 import { OpenAISpeechProvider, OpenAISummaryProvider } from './openai-provider';
 import type { SpeechProvider, SummaryProvider } from './types';
 
 /**
- * Provider selection, entirely environment-driven (AI Session Intelligence
- * Proposal: "swappable using environment variables, never hardcoded to one
- * vendor"). `AI_SPEECH_PROVIDER` / `AI_SUMMARY_PROVIDER` pick the vendor —
- * OpenAI is the default active vendor now that real credentials are
- * available; Mock remains the automatic, zero-config fallback whenever the
- * selected vendor's key secret isn't set, so the pipeline stays fully
- * exercisable (queue, stages, retry, dashboard) without a key in local dev
- * or CI.
+ * Provider selection, environment-driven (AI Session Intelligence Proposal:
+ * "swappable using environment variables, never hardcoded to one vendor" —
+ * the interfaces in ./types stay vendor-agnostic even though OpenAI is
+ * currently the only real implementation). `AI_SPEECH_PROVIDER` /
+ * `AI_SUMMARY_PROVIDER` default to 'openai'; Mock remains the automatic,
+ * zero-config fallback whenever OPENAI_API_KEY isn't set, so the pipeline
+ * stays fully exercisable (queue, stages, retry, dashboard) without a key
+ * in local dev or CI.
  */
 
 export const AI_SPEECH_PROVIDER = defineString('AI_SPEECH_PROVIDER', { default: 'openai' });
 export const AI_SUMMARY_PROVIDER = defineString('AI_SUMMARY_PROVIDER', { default: 'openai' });
-export const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
 export const OPENAI_API_KEY = defineSecret('OPENAI_API_KEY');
-const GEMINI_MODEL = defineString('GEMINI_MODEL', { default: 'gemini-2.5-flash' });
 
 /**
  * whisper-1 stays the default transcription model deliberately, not one of
@@ -47,13 +44,7 @@ const OPENAI_TRANSCRIBE_MODEL = defineString('OPENAI_TRANSCRIBE_MODEL', { defaul
 const OPENAI_SUMMARY_MODEL = defineString('OPENAI_SUMMARY_MODEL', { default: 'gpt-4o-mini' });
 
 export function getSpeechProvider(): SpeechProvider {
-  const selected = AI_SPEECH_PROVIDER.value();
-
-  if (selected === 'gemini') {
-    const key = GEMINI_API_KEY.value();
-    if (key) return new GeminiSpeechProvider(key, GEMINI_MODEL.value());
-  }
-  if (selected === 'openai') {
+  if (AI_SPEECH_PROVIDER.value() === 'openai') {
     const key = OPENAI_API_KEY.value();
     if (key) {
       return new OpenAISpeechProvider(
@@ -67,13 +58,7 @@ export function getSpeechProvider(): SpeechProvider {
 }
 
 export function getSummaryProvider(): SummaryProvider {
-  const selected = AI_SUMMARY_PROVIDER.value();
-
-  if (selected === 'gemini') {
-    const key = GEMINI_API_KEY.value();
-    if (key) return new GeminiSummaryProvider(key, GEMINI_MODEL.value());
-  }
-  if (selected === 'openai') {
+  if (AI_SUMMARY_PROVIDER.value() === 'openai') {
     const key = OPENAI_API_KEY.value();
     if (key) return new OpenAISummaryProvider(key, OPENAI_SUMMARY_MODEL.value());
   }

@@ -14,7 +14,7 @@ export class MockSpeechProvider implements SpeechProvider {
   async transcribe(input: { sessionTitle: string }): Promise<TranscriptionResult> {
     const text =
       `No speech-to-text provider is configured for "${input.sessionTitle}" yet. ` +
-      'Set AI_SPEECH_PROVIDER (gemini|openai) and the matching API key secret to enable real transcription.';
+      'Set the OPENAI_API_KEY secret to enable real transcription.';
     return {
       fullText: text,
       language: 'en',
@@ -32,7 +32,7 @@ export class MockSummaryProvider implements SummaryProvider {
     return {
       executiveSummary:
         `AI analysis is not yet available for "${input.sessionTitle}". ` +
-        'Set AI_SUMMARY_PROVIDER (gemini|openai) and the matching API key secret to enable it.',
+        'Set the OPENAI_API_KEY secret to enable it.',
       keyLearningPoints: [],
       importantQuestions: [],
       actionItems: [],

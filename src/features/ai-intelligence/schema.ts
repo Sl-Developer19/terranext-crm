@@ -12,6 +12,7 @@ import { z } from 'zod';
 export const SESSION_STATUSES = [
   'draft',
   'recording',
+  'paused',
   'processing',
   'completed',
   'failed',
@@ -66,13 +67,12 @@ export const MAX_CHUNKS_PER_SESSION = Math.ceil(
 );
 
 /**
- * Per-chunk size ceiling — chosen to stay safely under real provider limits
- * rather than a generic round number: OpenAI's Whisper API hard-caps a
- * single file at 25MB, and Gemini's inline (non-Files-API) request body is
- * capped well under that once ~10 minutes of audio is base64-encoded
- * (~1.34x inflation). 14MB comfortably clears both with margin, while a
- * realistic 10-minute voice recording at typical Opus/WebM bitrates is only
- * a few MB — this ceiling is a safety valve, not an expected size.
+ * Per-chunk size ceiling — chosen to stay safely under OpenAI's real limit
+ * rather than a generic round number: Whisper's `/audio/transcriptions`
+ * endpoint hard-caps a single file at 25MB. 14MB clears that with real
+ * margin, while a realistic 10-minute voice recording at typical
+ * Opus/WebM bitrates is only a few MB — this ceiling is a safety valve,
+ * not an expected size.
  */
 export const MAX_CHUNK_BYTES = 14 * 1024 * 1024;
 
@@ -159,6 +159,16 @@ export const finalizeSessionRecordingSchema = z.object({
 });
 export type FinalizeSessionRecordingInput = z.infer<typeof finalizeSessionRecordingSchema>;
 
+export const pauseSessionRecordingSchema = z.object({
+  sessionId: z.string().min(1),
+});
+export type PauseSessionRecordingInput = z.infer<typeof pauseSessionRecordingSchema>;
+
+export const resumeSessionRecordingSchema = z.object({
+  sessionId: z.string().min(1),
+});
+export type ResumeSessionRecordingInput = z.infer<typeof resumeSessionRecordingSchema>;
+
 export const retryProcessingJobSchema = z.object({
   jobId: z.string().min(1),
 });
@@ -178,6 +188,19 @@ export type UpdateAiSettingsInput = z.infer<typeof updateAiSettingsSchema>;
 
 /* ── Read models ───────────────────────────────────────────────────────── */
 
+/**
+ * One pause/resume cycle on a session. `resumedAt`/`durationSeconds` are
+ * `null` while the pause is still open — either the trainer hasn't clicked
+ * Resume yet, or the recording was stopped while paused (in which case
+ * `finalizeSessionRecording` closes the trailing entry itself; see
+ * `closeTrailingPauseEvent` in logic.ts).
+ */
+export interface PauseEvent {
+  pausedAt: string;
+  resumedAt: string | null;
+  durationSeconds: number | null;
+}
+
 export interface AiSession {
   id: string;
   title: string;
@@ -190,7 +213,13 @@ export interface AiSession {
   programmeName: string | null;
   deviceLabel: string | null;
   totalChunks: number | null;
+  /** Active recording time only (paused periods never accrue here) — what the chunk pipeline transcribes. */
   durationSeconds: number | null;
+  /** Wall-clock total: `durationSeconds + pausedDurationSeconds`. Set at finalize. */
+  sessionDurationSeconds: number | null;
+  pausedDurationSeconds: number;
+  pauseCount: number;
+  pauseHistory: PauseEvent[];
   processingJobId: string | null;
   transcriptId: string | null;
   summaryId: string | null;
@@ -284,5 +313,8 @@ export interface AiDashboardStats {
   todaysSessions: number;
   pendingProcessing: number;
   completedSessions: number;
+  /** Active recording time only — see `AiSession.durationSeconds`. */
   recordingHours: number;
+  pausedHours: number;
+  totalPauses: number;
 }

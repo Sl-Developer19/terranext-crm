@@ -11,6 +11,8 @@ import {
   type ChunkTranscriptInput,
 } from './chunk-pipeline';
 import {
+  AI_SPEECH_PROVIDER,
+  AI_SUMMARY_PROVIDER,
   GEMINI_API_KEY,
   getSpeechProvider,
   getSummaryProvider,
@@ -90,10 +92,23 @@ function readChunkDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): ChunkDocDat
   };
 }
 
+// `.value()` on a plain (non-secret) param resolves at deploy-discovery
+// time — the Firebase CLI loads this module once to enumerate function
+// definitions, reading AI_SPEECH_PROVIDER/AI_SUMMARY_PROVIDER from
+// functions/.env.<project-id> (or their coded default: 'openai') before any
+// function ever runs. That's what makes this genuinely deploy-time
+// conditional, not just a runtime check: GEMINI_API_KEY is only added to
+// the secrets Cloud Functions binds (and therefore only ever prompted for
+// or required to exist in Secret Manager) when Gemini is the explicitly
+// configured provider. Deploying with the 'openai' default never touches
+// it — OPENAI_API_KEY is the only secret this function needs by default.
+const GEMINI_ENABLED =
+  AI_SPEECH_PROVIDER.value() === 'gemini' || AI_SUMMARY_PROVIDER.value() === 'gemini';
+
 export const processAiSessionJob = onDocumentWritten(
   {
     document: 'aiProcessingJobs/{jobId}',
-    secrets: [GEMINI_API_KEY, OPENAI_API_KEY],
+    secrets: GEMINI_ENABLED ? [OPENAI_API_KEY, GEMINI_API_KEY] : [OPENAI_API_KEY],
     // Only one chunk's audio (a few MB in the realistic case, capped at
     // 14MB) is ever held in memory at a time, but a 90-minute, 9-chunk
     // session run against a real provider can still take a while end to

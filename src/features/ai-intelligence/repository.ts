@@ -4,6 +4,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/lib/firebase/admin';
 
+import { isRecordingSourceKind } from './audio/device-classification';
 import {
   aggregateDashboardStats,
   closeTrailingPauseEvent,
@@ -27,6 +28,7 @@ import type {
   AiTranscript,
   ChunkStatus,
   PauseEvent,
+  RecordingSourceKind,
   TranscriptSegment,
 } from './schema';
 
@@ -681,6 +683,7 @@ const DEFAULT_SETTINGS: AiIntelligenceSettings = {
   autoClassifySpeakers: true,
   notifyTrainerOnCompletion: true,
   audioRetentionDays: 365,
+  defaultRecordingSource: 'laptop_microphone',
   activeSpeechProvider: 'mock',
   activeSummaryProvider: 'mock',
   updatedAt: '',
@@ -691,10 +694,14 @@ export async function findAiSettings(): Promise<AiIntelligenceSettings> {
   const snap = await adminDb().doc(SETTINGS_DOC_PATH).get();
   if (!snap.exists) return DEFAULT_SETTINGS;
   const data = snap.data() ?? {};
+  const storedSource = asString(data.defaultRecordingSource);
   return {
     autoClassifySpeakers: data.autoClassifySpeakers !== false,
     notifyTrainerOnCompletion: data.notifyTrainerOnCompletion !== false,
     audioRetentionDays: asNumberOrNull(data.audioRetentionDays) ?? 365,
+    defaultRecordingSource: isRecordingSourceKind(storedSource)
+      ? storedSource
+      : 'laptop_microphone',
     activeSpeechProvider: asString(data.activeSpeechProvider) || 'mock',
     activeSummaryProvider: asString(data.activeSummaryProvider) || 'mock',
     updatedAt: toIso(data.updatedAt),
@@ -707,6 +714,7 @@ export async function saveAiSettings(
     autoClassifySpeakers: boolean;
     notifyTrainerOnCompletion: boolean;
     audioRetentionDays: number;
+    defaultRecordingSource: RecordingSourceKind;
   },
   actorUid: string,
 ): Promise<void> {
@@ -716,6 +724,7 @@ export async function saveAiSettings(
       autoClassifySpeakers: input.autoClassifySpeakers,
       notifyTrainerOnCompletion: input.notifyTrainerOnCompletion,
       audioRetentionDays: input.audioRetentionDays,
+      defaultRecordingSource: input.defaultRecordingSource,
       updatedAt: new Date(),
       updatedBy: actorUid,
     },

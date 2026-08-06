@@ -1,7 +1,7 @@
 # AI Intelligence Platform — Administrator Guide
 
-**Document version:** 1.1
-**Last updated:** 2026-08-03
+**Document version:** 1.2
+**Last updated:** 2026-08-05
 **Audience:** System Administrators and Founders — the roles that configure and manage this platform
 **Related document:** [User Guide](01-user-guide.md) (day-to-day operation)
 
@@ -67,10 +67,11 @@ flowchart TB
         C1["Auto-classify trainer & student speakers"]
         C2["Notify trainer when processing completes"]
         N["Audio retention (days)"]
+        Rs["Recording source\n(Classroom Hardware Mode default)"]
         B["Active speech provider · Active summary provider (read-only)"]
         Sv["Save"]
     end
-    H --> C1 --> C2 --> N --> B --> Sv
+    H --> C1 --> C2 --> N --> Rs --> B --> Sv
 ```
 
 | Setting | What it controls |
@@ -78,8 +79,22 @@ flowchart TB
 | **Auto-classify trainer & student speakers** | When on, the platform attempts to label each part of the transcript as Trainer or Student speech. When off, transcript segments are left unlabelled until reviewed manually. |
 | **Notify trainer when processing completes** | Governs whether trainers receive a completion notification. Confirm with your technical team whether notification delivery is active for your organization before relying on it. |
 | **Audio retention (days)** | Records your organization's intended retention period for session audio (7–3650 days). Confirm with your technical team whether automatic deletion is active for your organization — this field records policy intent, and you should not assume audio is automatically purged without checking. |
+| **Recording source** | See **Classroom Hardware Mode** below. |
 
 Two fields are shown for information only and can't be edited here: **Active speech provider** and **Active summary provider** — these show which AI provider actually processed the most recently completed session. If you've just changed provider configuration, these badges update after the next session finishes, not immediately.
+
+#### Classroom Hardware Mode
+
+Sets which kind of recording hardware your organization typically uses:
+
+- Laptop microphone
+- USB audio interface
+- Wireless receiver
+- Professional audio mixer
+
+This is a **default, not a restriction** — on the recording screen, a trainer can still select any audio device their computer recognizes, regardless of this setting. What it actually does: the platform guesses each connected device's type from its name (e.g. a device named "Shure BLX Wireless Receiver" is recognized as a wireless receiver) and, when a trainer opens a session, pre-selects a connected device matching your organization's default instead of just picking the first one the browser lists. If no connected device matches, it falls back to the trainer's last-used device on that computer, or simply the first device available.
+
+Set this to match what most of your trainers actually plug in — for a classroom running the full trainer + student wireless setup, set it to **Wireless receiver**; for a single presenter using a USB interface, set it to **USB audio interface**; otherwise leave it at **Laptop microphone**.
 
 ---
 
@@ -149,3 +164,9 @@ Not from the current screens — check with your technical team about export opt
 
 **Who do I contact for AI provider billing or API key issues?**
 Your technical/engineering team manages the AI provider account and API key configuration — they are your first point of contact for provider-side billing or key issues.
+
+**Does the Recording source setting stop trainers from using a different device?**
+No. It only changes which connected device the recording screen highlights first — every trainer can still pick any device their computer lists. See **Classroom Hardware Mode** in §4.
+
+**A trainer says a wireless receiver or USB interface isn't showing up in the microphone list. What do I check?**
+Confirm the hardware is actually connected and powered on, and that Windows/macOS itself lists it as a recording device (Sound settings, outside the browser) — the platform only ever shows what the operating system already recognizes as a microphone. If it appears in the OS but not the browser's list, a browser restart usually resolves it. The recording screen's **Check microphone** button is the fastest way for the trainer to confirm the device is connected, receiving signal, and at a good level before they start recording.

@@ -1,7 +1,7 @@
 # Engineering 01 — AI Intelligence Platform: Technical Architecture Guide
 
-**Document version:** 1.2
-**Last reviewed:** 2026-08-03
+**Document version:** 1.3
+**Last reviewed:** 2026-08-05
 **Audience:** Architects, senior engineers
 **Companion documents:** [02 — Developer Guide](02-developer-guide.md) · [03 — API & AI Workflow Guide](03-api-workflow-guide.md) · [04 — Known Limitations & Engineering Notes](04-known-limitations-and-engineering-notes.md)
 
@@ -20,6 +20,8 @@ src/features/ai-intelligence/
   repository.ts        — all Firestore reads/writes (Admin SDK)
   queries.ts           — read-only query façade used by Server Components (pages)
   actions/             — 'use server' mutations (create, delete, record-audio, retry, settings)
+  audio/               — AudioSource abstraction: types, device classification/quality/health
+                          (pure, unit-tested), MediaDeviceAudioSource (browser getUserMedia impl)
   components/          — client + server UI components
   index.ts             — the only import surface other code is meant to use
 
@@ -337,6 +339,32 @@ Pause/Resume is deliberately layered on top of the existing chunk architecture r
 - **Server-authoritative, race-safe bookkeeping:** `markSessionPaused`/`markSessionResumed` (`repository.ts`) run inside a Firestore transaction that checks the session is in the expected state (`recording` for pause, `paused` for resume) before mutating it — a double-click, a second tab, or a retried request after a dropped response all safely no-op rather than double-counting a pause.
 - **Stop works from `paused` too.** `MediaRecorder.stop()` is valid from both `recording` and `paused` states, so `handleStopClick` needs no branch on which state it's stopping from. `finalizeSessionRecording`'s status precondition was loosened from `status === 'recording'` to `status === 'recording' || status === 'paused'`, and `finalizeSessionAndEnqueue` closes any trailing open pause event itself (`closeTrailingPauseEvent` in `logic.ts`) so the trainer never has to click Resume before Stop.
 
+### 8.2 Classroom hardware input (AudioSource abstraction)
+
+```mermaid
+flowchart LR
+    T["Trainer earset mic"] --> RX["Wireless receiver\n(multi-channel)"]
+    S1["Up to 3 student mics"] --> RX
+    RX --> IF["USB audio interface\n(if the receiver needs one)"]
+    IF --> OS["OS audio input device"]
+    OS --> MDAS["MediaDeviceAudioSource\n(getUserMedia + AnalyserNode)"]
+    MDAS --> REC2["SessionRecorder\n(unchanged: MediaRecorder,\nchunking, pause/resume, upload)"]
+```
+
+Everything left of "OS audio input device" is hardware the browser has no visibility into — a receiver, an interface, and a mixer are all, to `navigator.mediaDevices`, indistinguishable from a laptop's built-in mic: one more entry in `enumerateDevices()`'s `audioinput` list. This is precisely why one implementation covers the full classroom chain from the hardware spec (trainer earset + up to 3 student mics → multi-channel receiver → USB interface → laptop) with no protocol-specific code — the browser has already reduced it to a standard input device by the time this module sees it.
+
+`src/features/ai-intelligence/audio/` formalizes this as an `AudioSource` interface (`start()/stop()/getStream()/describe()/onLevel()/onDisconnect()`), with `MediaDeviceAudioSource` as its only implementation today. `SessionRecorder` (`components/session-recorder.tsx`) consumes it in exactly one place — the pre-recording **Device check** (`startMonitoring`/`stopMonitoring`) — and otherwise still drives its own `getUserMedia`/`MediaRecorder`/`AnalyserNode` directly, unchanged from before this feature, per **L15** in the Known Limitations guide.
+
+Two pure modules do the non-browser-API work, unit-tested without jsdom:
+- `device-classification.ts#classifyRecordingSource(label)` — a best-effort, keyword-based guess at a device's kind (`laptop_microphone`/`usb_audio_interface`/`wireless_receiver`/`professional_audio_mixer`) from its `MediaDeviceInfo.label`. Display-only labeling, never a selection filter — see the comment on `RECORDING_SOURCES` in `schema.ts`.
+- `device-classification.ts#evaluateAudioQuality`/`evaluateDeviceHealth` — level/peak/clipping/silence thresholds and the four-item Connected/Signal present/Sample rate supported/Ready checklist shown by the device check, and (via the recording-time `AnalyserNode`, not a second `AudioSource`) the same warnings while actually recording.
+
+**What the browser can and can't report per device** — `enumerateDevices()` exposes a device's `deviceId`/`groupId`/`label` for every connected `audioinput`, but never its sample rate or channel count; those are only obtainable via `MediaStreamTrack.getSettings()`/`getCapabilities()` **after** a stream from that specific device has actually been opened (a deliberate Web platform privacy boundary — capability queries would otherwise fingerprint hardware without a permission prompt). Consequently `AudioDeviceInfo.sampleRate`/`channelCount` are `null` for every device until the trainer selects and opens it (via **Device check** or **Start recording**); the UI reflects this honestly ("select to check") rather than showing a fabricated number.
+
+**Classroom Hardware Mode** (`AiIntelligenceSettings.defaultRecordingSource`, Settings) is a pure UX default: `SessionRecorder`'s device-selection logic (`refreshDevices`) prefers a connected device whose classified `kind` matches it, ahead of simply the first device `enumerateDevices()` returns, but after the trainer's own current selection and their last-used device (persisted to `localStorage`, key `ai-intelligence:last-audio-device-id`). It never filters the device list and is not enforced server-side — the server has no way to know or verify which physical device produced a given recording.
+
+**Future hardware** (8-channel USB mixers, digital consoles, conferencing systems — see **L17**) would implement `AudioSource` directly rather than going through `MediaDeviceAudioSource`, e.g. reading multiple channels via `MediaStreamTrack`'s `channelCount` constraint, or a WebHID/WebUSB-backed source for hardware with a control surface. `SessionRecorder`'s chunking/pause-resume/upload code has no dependency on `AudioSource` at all today (only the device check does) — wiring a new implementation into the actual recording stream, when that becomes necessary, only touches `handleStart`'s `getUserMedia` call, nothing downstream of it.
+
 ---
 
 ## 9. Security architecture summary
@@ -376,3 +404,11 @@ Full detail in [02 — Developer Guide §5](02-developer-guide.md#5-security-imp
 | Vendor-agnostic provider interfaces | Implemented | `SpeechProvider`/`SummaryProvider` — OpenAI is the only real implementation today; Mock is the zero-credential fallback |
 | Manual job retry | Implemented | Owner or `aiIntelligence:configure`; resumes rather than restarts |
 | Bulk/automatic job retry | Not implemented | **L13, L14** |
+| Classroom hardware input (wireless receiver, USB interface, mixer) | Implemented | Standard browser `audioinput` devices — no protocol-specific code; see §8.2 |
+| Device kind classification (USB interface / wireless receiver / mixer / laptop mic) | Implemented | Label-keyword heuristic, display-only — **L16** |
+| Pre-recording device check (level, peak, health, capabilities) | Implemented | `MediaDeviceAudioSource`, separate from the recording-time stream |
+| Live audio quality warnings (low/silent/clipping) during recording | Implemented | Same thresholds as the pre-recording check, read from the existing recording-time `AnalyserNode` |
+| Per-device sample rate/channel count before selection | Not implemented | Not obtainable from the Web platform without opening the device — **L16** |
+| Remember last-used device / auto-reconnect on replug | Implemented | `localStorage` + `devicechange` listener |
+| Classroom Hardware Mode default (Settings) | Implemented | Pre-selection hint only, not enforced or filtered — see §8.2 |
+| Vendor-agnostic `AudioSource` for future mixers/consoles | Implemented (interface only) | One real implementation (`MediaDeviceAudioSource`) today — **L17** |

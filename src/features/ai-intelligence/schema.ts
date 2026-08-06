@@ -76,6 +76,26 @@ export const MAX_CHUNKS_PER_SESSION = Math.ceil(
  */
 export const MAX_CHUNK_BYTES = 14 * 1024 * 1024;
 
+/**
+ * Classroom Hardware Mode (AI Knowledge Capture Room Hardware Requirements):
+ * an informational hint, not a hard filter — the recorder still lists every
+ * `audioinput` device the browser reports and lets the trainer pick any of
+ * them. `defaultRecordingSource` only biases which device the recorder
+ * pre-selects (see `audio/device-classification.ts#classifyRecordingSource`,
+ * which guesses a device's kind from its label) and labels it for the
+ * trainer. There is deliberately no separate "8-channel mixer" or "digital
+ * console" option yet — see the `AudioSource` interface in
+ * `audio/types.ts` for how those would plug in later without this list, the
+ * recorder, or the processing pipeline changing.
+ */
+export const RECORDING_SOURCES = [
+  'laptop_microphone',
+  'usb_audio_interface',
+  'wireless_receiver',
+  'professional_audio_mixer',
+] as const;
+export type RecordingSourceKind = (typeof RECORDING_SOURCES)[number];
+
 export const CHUNK_STATUSES = [
   'uploading',
   'uploaded',
@@ -183,6 +203,7 @@ export const updateAiSettingsSchema = z.object({
   autoClassifySpeakers: z.boolean(),
   notifyTrainerOnCompletion: z.boolean(),
   audioRetentionDays: z.number().int().min(7).max(3650),
+  defaultRecordingSource: z.enum(RECORDING_SOURCES),
 });
 export type UpdateAiSettingsInput = z.infer<typeof updateAiSettingsSchema>;
 
@@ -303,6 +324,8 @@ export interface AiIntelligenceSettings {
   autoClassifySpeakers: boolean;
   notifyTrainerOnCompletion: boolean;
   audioRetentionDays: number;
+  /** Classroom Hardware Mode default — see `RECORDING_SOURCES` above. */
+  defaultRecordingSource: RecordingSourceKind;
   activeSpeechProvider: string;
   activeSummaryProvider: string;
   updatedAt: string;

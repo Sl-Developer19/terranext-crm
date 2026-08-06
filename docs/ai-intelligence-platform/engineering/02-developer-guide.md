@@ -1,7 +1,7 @@
 # Engineering 02 — AI Intelligence Platform: Developer Guide
 
-**Document version:** 1.2
-**Last reviewed:** 2026-08-03
+**Document version:** 1.3
+**Last reviewed:** 2026-08-05
 **Audience:** Engineers implementing changes to this module
 **Companion documents:** [01 — Technical Architecture](01-technical-architecture.md) · [03 — API & AI Workflow Guide](03-api-workflow-guide.md) · [04 — Known Limitations & Engineering Notes](04-known-limitations-and-engineering-notes.md)
 
@@ -22,6 +22,10 @@ Read [01 — Technical Architecture Guide](01-technical-architecture.md) first f
 | `src/features/ai-intelligence/actions/record-audio.ts` | `requestChunkUploadTicket`, `confirmChunkUpload`, `finalizeSessionRecording`, `pauseSessionRecording`, `resumeSessionRecording` server actions |
 | `src/features/ai-intelligence/actions/retry-processing-job.ts` | `retryProcessingJob` server action |
 | `src/features/ai-intelligence/actions/update-settings.ts` | `updateAiSettings` server action |
+| `src/features/ai-intelligence/audio/types.ts` | `AudioSource` interface, `AudioDeviceInfo`/`AudioLevelSample`/`AudioQualityWarning`/`DeviceHealthCheck` types |
+| `src/features/ai-intelligence/audio/device-classification.ts` | Pure: `classifyRecordingSource`, `evaluateAudioQuality`, `evaluateDeviceHealth`, `isRecordingSourceKind`, `RECORDING_SOURCE_LABELS` |
+| `src/features/ai-intelligence/audio/device-classification.test.ts` | Unit tests for the above |
+| `src/features/ai-intelligence/audio/media-device-audio-source.ts` | `MediaDeviceAudioSource` (the only `AudioSource` implementation — `getUserMedia` + `AnalyserNode`), `listAudioInputDevices` |
 | `src/features/ai-intelligence/components/*.tsx` | 10 UI components (listed in §4) |
 | `src/features/ai-intelligence/index.ts` | Public barrel — only exports from here should be imported outside the feature folder |
 | `src/features/ai-intelligence/logic.test.ts` | Unit tests for `logic.ts` |
@@ -183,13 +187,15 @@ schemaVersion: 1
 autoClassifySpeakers: boolean
 notifyTrainerOnCompletion: boolean       // stored, not yet acted on — see L8
 audioRetentionDays: number               // stored, not yet enforced — see L7
+defaultRecordingSource: 'laptop_microphone' | 'usb_audio_interface' | 'wireless_receiver' | 'professional_audio_mixer'
+                                          // Classroom Hardware Mode — pre-selection hint only, see 01 §8.2
 activeSpeechProvider: string             // stamped by the Cloud Function, not by updateAiSettings
 activeSummaryProvider: string            // stamped by the Cloud Function, not by updateAiSettings
 updatedAt: Date
 updatedBy: string
 ```
 
-`findAiSettings()` returns a hardcoded default (`autoClassifySpeakers: true, notifyTrainerOnCompletion: true, audioRetentionDays: 365, activeSpeechProvider: 'mock', activeSummaryProvider: 'mock'`) if this document doesn't exist yet.
+`findAiSettings()` returns a hardcoded default (`autoClassifySpeakers: true, notifyTrainerOnCompletion: true, audioRetentionDays: 365, defaultRecordingSource: 'laptop_microphone', activeSpeechProvider: 'mock', activeSummaryProvider: 'mock'`) if this document doesn't exist yet, or if a stored `defaultRecordingSource` value doesn't match one of the four known kinds (`isRecordingSourceKind` guard in `repository.ts`).
 
 ### Cross-collection lookups (read-only from this module)
 
@@ -204,7 +210,7 @@ updatedBy: string
 | `DashboardView` | Server | Stat tiles + recent sessions list; mounts `AutoRefresh(8000)` | `stats: AiDashboardStats`, `recentSessions: AiSession[]` |
 | `SessionsTable` | Client | Session list table with delete action | `sessions: AiSession[]`, `canDelete: boolean` |
 | `CreateSessionDialog` | Client | Create-session form (title/batch/programme) | `batches`, `programmes` |
-| `SessionRecorder` | Client | Mic select + record/pause/resume controls; `null` unless `session.status === 'draft'` | `session: AiSession` |
+| `SessionRecorder` | Client | Mic select + device check (level/peak/health) + record/pause/resume controls; `null` unless `session.status === 'draft'` | `session: AiSession`, `defaultRecordingSource?: RecordingSourceKind` |
 | `SessionTimeline` | Server | Recording Started → Paused/Resumed pairs → Recording Stopped, built from `startedAt`/`pauseHistory`/`endedAt`; renders nothing until `startedAt` is set | `session: AiSession` |
 | `ProcessingQueueView` | Client | Job table + retry action; mounts `AutoRefresh(4000)` while a job is active | `jobs: AiProcessingJob[]`, `canRetry: boolean` |
 | `SummaryView` | Server | Executive summary + 3 list cards | `summary: AiSummary \| null` |
@@ -319,6 +325,7 @@ To add a third provider (e.g. `azure`):
 
 - `src/features/ai-intelligence/logic.test.ts` — unit tests for pure functions in `logic.ts` (chunk planning, progress percent, terminal stage detection, duration formatting, and the pause/resume math: `closeTrailingPauseEvent`, `sumPausedSeconds`, `computeSessionDurationSeconds`).
 - `functions/src/ai/chunk-pipeline.test.ts` — unit tests for `mergeChunkTranscripts` (offset-shifting, out-of-order chunk defensiveness, language fallback) and `selectChunksToProcess` (resume filtering).
+- `src/features/ai-intelligence/audio/device-classification.test.ts` — unit tests for `classifyRecordingSource` (label-keyword heuristics), `evaluateAudioQuality` (clipping/silent/low thresholds), and `evaluateDeviceHealth` (the four-item readiness checklist).
 - There is no integration test coverage against a live Firestore emulator or the real OpenAI API (**T4**) — provider correctness is verified by the mock provider's deterministic output plus manual verification against a real OpenAI account.
 - When changing `planSessionChunks`, `mergeChunkTranscripts`, or any `STAGE_PROGRESS`/status-string constant, run/extend both test files — they are the only automated guard against silently breaking the chunk-boundary or resume logic.
 
@@ -339,3 +346,7 @@ To add a third provider (e.g. `azure`):
 | Add audio retention enforcement | Build a new scheduled Cloud Function reading `audioRetentionDays` and deleting expired Storage objects + Firestore docs | **L7** / **E7** |
 | Add completion notifications | Hook into `process-session-job.ts`'s success path (after `stage='completed'`), reading `notifyTrainerOnCompletion` | **L8** / **E8** |
 | Fix the dead `deviceLabel` field | Either add the missing input to `CreateSessionDialog`, or remove the field end-to-end | **L4** / **E4** |
+| Add a new device-kind keyword (e.g. a new mixer brand) | `classifyRecordingSource` in `audio/device-classification.ts` — add to the relevant keyword/vendor array, add a test case | Display-only labeling; never gates device selection |
+| Adjust audio quality thresholds (clipping/silent/low) | `CLIPPING_PEAK_THRESHOLD`/`SILENT_PEAK_THRESHOLD`/`LOW_LEVEL_THRESHOLD` in `audio/device-classification.ts` — same constants back both the pre-recording check and the recording-time meter in `session-recorder.tsx` | Update `device-classification.test.ts` alongside |
+| Support a real multi-channel mixer/console | Implement `AudioSource` (`audio/types.ts`) directly — do not extend `MediaDeviceAudioSource` for hardware that needs more than one `audioinput` stream exposes | **L17** / **E13** |
+| Add a new `RecordingSourceKind` option (Settings § Classroom Hardware Mode) | `RECORDING_SOURCES` (schema.ts) → `RECORDING_SOURCE_LABELS` (audio/device-classification.ts) → `classifyRecordingSource`'s keyword/vendor tables | Also update `SettingsForm`'s dropdown (auto-populates from `RECORDING_SOURCES`, no separate change needed there) |

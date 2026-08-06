@@ -8,9 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AutoRefresh,
+  getAiSettings,
   SESSION_STATUS_KIND,
   SESSION_STATUS_LABELS,
   SessionRecorder,
+  SessionTimeline,
   SummaryView,
   TranscriptView,
   formatDuration,
@@ -35,6 +37,7 @@ export default async function AiSessionDetailPage({
   if (!session) notFound();
 
   const isProcessing = session.status === 'processing';
+  const settings = session.status === 'draft' ? await getAiSettings() : null;
 
   return (
     <div className="space-y-6">
@@ -52,7 +55,26 @@ export default async function AiSessionDetailPage({
         }
       />
 
-      <SessionRecorder session={session} />
+      <SessionRecorder
+        session={session}
+        defaultRecordingSource={settings?.defaultRecordingSource ?? 'laptop_microphone'}
+      />
+
+      {session.status === 'recording' || session.status === 'paused' ? (
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground">
+            This session is {session.status === 'paused' ? 'paused' : 'recording'} in a browser tab.
+            Recording controls (Pause, Resume, Stop) only work in the tab where{' '}
+            <strong className="font-medium text-foreground">Start recording</strong> was clicked —
+            if that tab was closed or this page was refreshed, it can&apos;t be controlled from
+            here. Anything already uploaded is safely saved; if this session is stuck, a System
+            Administrator can remove it without losing the recording, transcript, or summary
+            generated so far.
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <SessionTimeline session={session} />
 
       {isProcessing ? (
         <Card>
@@ -76,10 +98,21 @@ export default async function AiSessionDetailPage({
         <div className="grid gap-4 sm:grid-cols-2">
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
-              Duration:{' '}
+              Active recording time:{' '}
               {session.durationSeconds !== null ? formatDuration(session.durationSeconds) : '—'}
             </CardContent>
           </Card>
+          {session.pauseCount > 0 ? (
+            <Card>
+              <CardContent className="pt-6 text-sm text-muted-foreground">
+                Paused {session.pauseCount} time{session.pauseCount === 1 ? '' : 's'} ·{' '}
+                {formatDuration(session.pausedDurationSeconds)} total
+                {session.sessionDurationSeconds !== null
+                  ? ` · ${formatDuration(session.sessionDurationSeconds)} session length`
+                  : ''}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       ) : null}
 

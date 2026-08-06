@@ -1,6 +1,6 @@
 # Engineering 05 — AI Intelligence Platform: Installation & Deployment Guide
 
-**Document version:** 1.1
+**Document version:** 1.2
 **Last reviewed:** 2026-08-05
 **Audience:** Engineers/DevOps deploying or reconfiguring this module
 **Companion documents:** [01 — Technical Architecture](01-technical-architecture.md) · [02 — Developer Guide](02-developer-guide.md) · [03 — API & AI Workflow Guide](03-api-workflow-guide.md) · [04 — Known Limitations & Engineering Notes](04-known-limitations-and-engineering-notes.md)
@@ -13,6 +13,12 @@
 
 - Firebase CLI authenticated against the correct project (`firebase login`, `firebase use <project-id>`), per the general deployment runbook.
 - If enabling real AI processing (recommended for production; see §3), an **OpenAI** account and API key — it is the only supported real provider. Without it, the module runs on its zero-credential mock provider (placeholder transcript/summary text).
+
+### 1.1 Classroom recording hardware — nothing to deploy or configure server-side
+
+The classroom hardware support (wireless receiver, USB audio interface, professional mixer — 01 §8.2) is entirely a browser-side capability: it uses only `navigator.mediaDevices`/`MediaRecorder`, the same as the original laptop-mic-only recorder. It adds no secrets, no environment variables, no Cloud Function config, and no Storage/Firestore rule changes beyond the one new `defaultRecordingSource` field on the existing `aiIntelligenceSettings/config` document (already covered by that document's existing `allow write: if false` rule — Admin SDK only, same as every other field on it).
+
+The one deployment-relevant prerequisite is the browser's own **Permissions-Policy** `microphone` directive (`next.config.mjs`) allowing same-origin use — already required for the original laptop-mic recorder and not specific to this feature. `getUserMedia` additionally requires a secure context (HTTPS in production; `localhost` is exempt), which the platform's standard HTTPS deployment already satisfies.
 
 ---
 

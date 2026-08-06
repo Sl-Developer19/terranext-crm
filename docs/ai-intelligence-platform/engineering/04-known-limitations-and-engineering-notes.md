@@ -1,6 +1,6 @@
 # Engineering 04 — Known Limitations & Engineering Notes
 
-**Document version:** 1.2
+**Document version:** 1.3
 **Last reviewed:** 2026-08-05
 **Audience:** Engineering team, technical leads
 **Companion documents:** [01 — Technical Architecture](01-technical-architecture.md) · [02 — Developer Guide](02-developer-guide.md) · [03 — API & AI Workflow Guide](03-api-workflow-guide.md)
@@ -31,6 +31,9 @@ Client-facing documentation ([User Guide](../client/01-user-guide.md), [Administ
 | L12 | **Chunk statuses `transcribing`/`transcribed` are backend-only.** These are declared in `CHUNK_STATUSES` but only ever written by `processAiSessionJob`; the frontend upload flow only ever sets `uploading`/`uploaded`/`failed`. | `schema.ts`, `process-session-job.ts` |
 | L13 | **No bulk retry.** Every failed job on the Processing Queue must be retried individually — there is no "retry all failed jobs" action. | `processing-queue-view.tsx` |
 | L14 | **No automatic retry.** A failed job stays `failed` indefinitely until a human clicks Retry; there is no scheduled sweep that re-queues failed jobs automatically. | `process-session-job.ts` |
+| L15 | **`AudioSource` is only wired into the pre-recording device check, not the recording-time stream.** `SessionRecorder`'s actual `MediaRecorder`/chunking/pause-resume code still calls `getUserMedia`/builds its own `AnalyserNode` directly, unchanged from before the `AudioSource` abstraction existed — only `startMonitoring`/`stopMonitoring` (the "Check microphone" flow) go through `MediaDeviceAudioSource`. Deliberate, per the classroom hardware request's "do not change the recording engine" constraint, but it means the level/peak/quality logic is duplicated (once in `MediaDeviceAudioSource`, once inline in `session-recorder.tsx`'s `startMeterLoop`) rather than shared. | `session-recorder.tsx`, `audio/media-device-audio-source.ts` |
+| L16 | **Per-device sample rate/channel count aren't known until a device is opened.** `navigator.mediaDevices.enumerateDevices()` never exposes capabilities, by Web-platform design (it would fingerprint hardware without a permission prompt) — only `MediaStreamTrack.getSettings()`/`getCapabilities()` after `getUserMedia` succeeds on that specific device does. The device list's Sample rate/Channel count columns are genuinely unknown, not merely unfetched, for every device until the trainer selects and opens it via **Device check** or **Start recording**. | `audio/types.ts`, `audio/media-device-audio-source.ts` |
+| L17 | **`AudioSource` has exactly one real implementation.** `MediaDeviceAudioSource` (standard browser `getUserMedia`) is the only concrete `AudioSource` today — an 8-channel USB mixer, digital console, or conferencing-system integration (anything needing more than what a single `audioinput` `MediaStream` exposes) would require a new implementation of the interface, not yet built. | `audio/types.ts` |
 
 ---
 
@@ -50,6 +53,7 @@ Client-facing documentation ([User Guide](../client/01-user-guide.md), [Administ
 | E10 | Build the custom-token-minting seam for authenticated client Firestore reads, then migrate `AutoRefresh` polling to `onSnapshot` real-time listeners. | L10 |
 | E11 | Add a speaker filter and inline audio playback with timestamp-jump to the Transcript view, matching its existing descriptive copy. | L11 |
 | E12 | Add a "retry all failed jobs" bulk action to the Processing Queue, and/or a scheduled sweep that automatically re-queues jobs that have been failed for longer than a configurable threshold. | L13, L14 |
+| E13 | Migrate `SessionRecorder`'s recording-time `getUserMedia`/`AnalyserNode` code to also go through `MediaDeviceAudioSource`, so the level/peak/quality logic is exercised through one code path instead of two; and, when an actual multi-channel mixer/console integration is scoped, implement `AudioSource` for it directly rather than extending `MediaDeviceAudioSource`. | L15, L17 |
 
 ---
 
@@ -99,3 +103,4 @@ Gemini support was removed (1.2) — findings that only existed as an OpenAI-vs-
 | 1.0 | 2026-08-02 | Initial consolidation of all implementation observations found during the documentation review, moved out of the client-facing guides and out of narrative asides in the architecture/developer/API documents. |
 | 1.1 | 2026-08-03 | Pause/Resume Recording shipped. L9 extended to cover the new `paused` status (same crash/reload limitation as `recording`, now with an explanatory banner instead of silence). T4 extended to note the same "pure-function-only" test coverage caveat applies to the new pause bookkeeping. |
 | 1.2 | 2026-08-05 | Gemini support removed — OpenAI is now the only real provider. Deleted P3 (Gemini inline-audio constraint) and P6 (Gemini-vs-OpenAI classification-quality comparison), both no longer applicable with a single provider. Deleted T5 ("whisper-1 is hardcoded") — no longer true; it's configurable via `OPENAI_TRANSCRIBE_MODEL`. P1, P2, P4, P7 reworded to drop Gemini comparisons while keeping the underlying OpenAI-specific observation. |
+| 1.3 | 2026-08-05 | Classroom Hardware Mode shipped (`audio/` module, `AudioSource` abstraction, device classification/health/quality checks, Settings default). Added L15 (`AudioSource` only wired into the pre-recording check, not the recording-time stream), L16 (per-device sample rate/channel count unknowable before the device is opened — a Web platform constraint, not a gap to close), L17 (`AudioSource` has one real implementation), and E13 (the corresponding follow-up: unify the two metering code paths, and implement `AudioSource` for a real mixer/console when one is scoped). |

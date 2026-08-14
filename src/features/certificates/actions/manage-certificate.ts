@@ -1,8 +1,12 @@
 'use server';
 
+import { format } from 'date-fns';
+
 import { enqueueTemplatedMessage } from '@/features/communications/enqueue';
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
+import { adminBucket } from '@/lib/firebase/admin';
+import { appOrigin } from '@/lib/http/app-origin';
 import { can } from '@/lib/rbac/permissions';
 import {
   internalError,
@@ -14,15 +18,20 @@ import {
   type Result,
 } from '@/lib/utils/result';
 
+import {
+  findActiveTemplateForAssignment,
+  renderAndStoreCertificatePdf,
+} from '@/features/certificate-templates';
 import { findProgrammeById } from '@/features/catalogue/repository';
 import { findEnrolments, findParticipantById } from '@/features/participants/repository';
 
-import { canRevoke } from '../logic';
+import { buildCertificateVerifyUrl, canRevoke } from '../logic';
 import {
   ensureAlumniRecord,
   findCertificateById,
   issueCertificate,
   revokeCertificateRecord,
+  setCertificatePdfPath,
 } from '../repository';
 import {
   issueCertificateSchema,
@@ -74,6 +83,31 @@ export async function issueCertificateAction(
       });
     }
 
+    // Configuration gate, checked before BR-03 eligibility — a programme
+    // with certificates disabled never issues one, regardless of attendance
+    // or assessment thresholds, and regardless of `override` (an ops
+    // override waives failed criteria, not the programme's own certificate
+    // policy — those are different decisions made by different people).
+    if (!programme.certificateEnabled) {
+      return preconditionError('BR-03', 'Certificates are disabled for this programme.');
+    }
+
+    // Certificate Template Engine: an ACTIVE template must be resolvable
+    // before anything is minted — programme-level assignment first, then
+    // academy-level fallback. No template, no certificate, regardless of
+    // override; a certificate cannot be rendered onto artwork that doesn't
+    // exist, and a coordinator issuing one is not the moment to invent one.
+    const templateMatch = await findActiveTemplateForAssignment(
+      enrolment.programmeId,
+      programme.academyId,
+    );
+    if (!templateMatch) {
+      return preconditionError(
+        'BR-03',
+        'No active certificate template is configured for this programme.',
+      );
+    }
+
     const outcome = await issueCertificate({
       participantId,
       enrolmentId,
@@ -84,6 +118,9 @@ export async function issueCertificateAction(
       actorUid: session.uid,
       branchId: session.branchId,
       override,
+      templateId: templateMatch.templateId,
+      templateVersionId: templateMatch.versionId,
+      templateVersionNumber: templateMatch.versionNumber,
     });
 
     if (outcome.kind === 'already_issued') {
@@ -140,6 +177,38 @@ export async function issueCertificateAction(
     } catch {
       // Non-fatal — see above. The alumni record can be created by re-running
       // this idempotent step; it must not undo a successful certificate issuance.
+    }
+
+    // Certificate Template Engine: render the PDF onto the resolved active
+    // template version and store it. Non-fatal on failure for the same
+    // reason as the alumni step — the certificate record is already the
+    // fact of record; a rendering problem is recoverable by regenerating
+    // the PDF later without undoing the issuance itself.
+    try {
+      const origin = await appOrigin();
+      const verifyUrl = buildCertificateVerifyUrl(
+        origin,
+        outcome.certificateId,
+        outcome.verifyHash,
+      );
+      const durationLabel = `${programme.durationDays} day${programme.durationDays === 1 ? '' : 's'}`;
+
+      const renderResult = await renderAndStoreCertificatePdf({
+        certificateId: outcome.certificateId,
+        templateId: templateMatch.templateId,
+        templateVersionId: templateMatch.versionId,
+        verifyUrl,
+        participantName: participant.personal.fullName,
+        programmeName: programme.name,
+        academyName: programme.academyName ?? '',
+        completionDate: format(outcome.issuedAt, 'PP'),
+        duration: durationLabel,
+      });
+      if (renderResult.kind === 'stored') {
+        await setCertificatePdfPath(outcome.certificateId, renderResult.storagePath, session.uid);
+      }
+    } catch {
+      // Non-fatal — see above.
     }
 
     // Doc 19 §3 `onCertificateIssued`: notify the participant. Idempotent by
@@ -199,5 +268,48 @@ export async function revokeCertificate(
     return ok({ ok: true });
   } catch {
     return internalError('Could not revoke the certificate. Please try again.');
+  }
+}
+
+/**
+ * Short-lived download URL for a certificate's generated PDF — same
+ * signed-URL pattern as participant document downloads, audited the same
+ * way (Doc 10 §6). Not available until the PDF has actually rendered.
+ */
+export async function issueCertificateDownloadUrl(
+  certificateId: string,
+): Promise<Result<{ url: string }>> {
+  const session = await getSession();
+  if (!session) return permissionError('Sign in required.');
+  if (!can(session.role, 'certificates:view')) return permissionError();
+
+  if (!certificateId || typeof certificateId !== 'string') {
+    return validationError({ certificateId: 'Invalid certificate reference' });
+  }
+
+  try {
+    const certificate = await findCertificateById(certificateId);
+    if (!certificate) return notFoundError('Certificate not found.');
+    if (!certificate.pdfStoragePath) {
+      return validationError({ certificateId: 'The certificate PDF is not available yet.' });
+    }
+
+    const [url] = await adminBucket()
+      .file(certificate.pdfStoragePath)
+      .getSignedUrl({ version: 'v4', action: 'read', expires: Date.now() + 15 * 60 * 1_000 });
+
+    await writeAudit({
+      actorUid: session.uid,
+      actorRole: session.role,
+      action: 'export',
+      entityType: 'certificate',
+      entityId: certificateId,
+      entityPath: `certificates/${certificateId}`,
+      context: { feature: 'certificates', reason: 'certificate_download' },
+    });
+
+    return ok({ url });
+  } catch {
+    return internalError('Could not prepare the download. Please try again.');
   }
 }

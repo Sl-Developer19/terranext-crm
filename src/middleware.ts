@@ -90,9 +90,28 @@ export const config = {
   // website lead intake and Growth Partner registration (a visitor on the
   // marketing site has no session either — both defend themselves with an
   // origin allow-list, honeypot, and rate limits instead, Doc 20 §2 /
-  // Doc 25 §4), and the partner session DELETE (Doc 25, ADR-014 — same
-  // "clears its own cookie" rationale as api/session).
+  // Doc 25 §4), public certificate verification (`/verify`, Certificate
+  // Template Engine — a UI wrapper around the already-excluded
+  // api/certificates/verify; an employer scanning a QR code has no session
+  // either), Community Partner registration (TCGN, same posture —
+  // this was missing until Feature 6's review caught it: the route existed
+  // but was unreachable, since middleware redirected every unauthenticated
+  // call to it before the handler ever ran), the partner session DELETE
+  // (Doc 25, ADR-014 — same "clears its own cookie" rationale as
+  // api/session), the QR redirect (`/r/*`, TCGN Feature 6 — a stranger
+  // scanning a printed code has no session at all, staff or partner), and
+  // the scheduled job endpoints (`api/jobs/*`, Doc 19 §4 — Cloud Scheduler
+  // POSTs these with a `JOBS_SECRET` bearer token, not a session cookie;
+  // without this exclusion every scheduled run was silently redirected to
+  // /login before `isAuthorisedJobRequest` ever ran, production QA finding),
+  // the public catalogue read (`api/catalogue/*` — the website's Apply
+  // form and enquiry popup fetch this with no session at all, same posture
+  // as api/createLead; caught by live-testing before ship, same bug class
+  // as the Community Partner registration finding above), and the public
+  // settings read (`api/settings/public` — Settings §4, same posture as
+  // api/catalogue: the website has no session to fetch org/branding info
+  // with, added proactively this time rather than caught live).
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/session|api/partner-session|api/auth|api/errors|api/certificates/verify|api/createLead|api/registerGrowthPartner|.*\\.(?:svg|png|jpg|ico)).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/session|api/partner-session|api/auth|api/errors|api/certificates/verify|api/createLead|api/registerGrowthPartner|api/registerCommunityPartner|api/catalogue|api/settings/public|api/jobs|r/|verify|.*\\.(?:svg|png|jpg|ico)).*)',
   ],
 };

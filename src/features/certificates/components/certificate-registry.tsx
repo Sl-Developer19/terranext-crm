@@ -1,7 +1,7 @@
 'use client';
 
 import { format } from 'date-fns';
-import { FileBadge } from 'lucide-react';
+import { Download, FileBadge } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-import { revokeCertificate } from '../actions/manage-certificate';
+import { issueCertificateDownloadUrl, revokeCertificate } from '../actions/manage-certificate';
 import type { Certificate } from '../schema';
 
 /** S27 certificate registry with revocation (Doc 16). */
@@ -37,6 +37,21 @@ export function CertificateRegistry({
   const [target, setTarget] = React.useState<Certificate | null>(null);
   const [reason, setReason] = React.useState('');
   const [pending, setPending] = React.useState(false);
+  const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
+
+  const handleDownload = async (certificateId: string) => {
+    setDownloadingId(certificateId);
+    try {
+      const outcome = await issueCertificateDownloadUrl(certificateId);
+      if (!outcome.ok) {
+        toast.error(outcome.error.message);
+        return;
+      }
+      window.open(outcome.data.url, '_blank', 'noopener,noreferrer');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const confirm = async () => {
     if (!target) return;
@@ -77,7 +92,7 @@ export function CertificateRegistry({
             <TableHead>Evidence at issuance</TableHead>
             <TableHead>Issued</TableHead>
             <TableHead>Status</TableHead>
-            {canRevoke ? <TableHead className="text-right">Action</TableHead> : null}
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -115,15 +130,26 @@ export function CertificateRegistry({
                   </div>
                 ) : null}
               </TableCell>
-              {canRevoke ? (
-                <TableCell className="text-right">
-                  {certificate.status === 'issued' ? (
+              <TableCell className="text-right">
+                <div className="flex justify-end gap-2">
+                  {certificate.pdfStoragePath ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={downloadingId === certificate.id}
+                      onClick={() => handleDownload(certificate.id)}
+                    >
+                      <Download aria-hidden />
+                      PDF
+                    </Button>
+                  ) : null}
+                  {canRevoke && certificate.status === 'issued' ? (
                     <Button variant="outline" size="sm" onClick={() => setTarget(certificate)}>
                       Revoke
                     </Button>
                   ) : null}
-                </TableCell>
-              ) : null}
+                </div>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

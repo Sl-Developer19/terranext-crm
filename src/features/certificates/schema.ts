@@ -67,6 +67,19 @@ export interface Certificate {
   revokedAt: string | null;
   /** Random 32-hex used by the public verification endpoint. */
   verifyHash: string;
+  /**
+   * The exact template version rendered at issuance (Certificate Template
+   * Engine). Null for certificates issued before the engine existed, or if
+   * no active template was assigned to the programme at issuance time — the
+   * certificate record itself is unaffected either way. Frozen forever: a
+   * later template edit never changes what an already-issued certificate
+   * points to (historical integrity).
+   */
+  templateId: string | null;
+  templateVersionId: string | null;
+  templateVersionNumber: number | null;
+  /** Storage path of the generated PDF, set once rendering succeeds (non-fatal if it doesn't — see issueCertificateAction). */
+  pdfStoragePath: string | null;
 }
 
 /** One row of the eligibility queue (S27). */

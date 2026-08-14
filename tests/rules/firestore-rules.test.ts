@@ -59,6 +59,14 @@ beforeEach(async () => {
     await setDoc(doc(db, 'colleges/col1'), { name: 'St Xavier', status: 'active' });
     await setDoc(doc(db, 'alumniRecords/TNX-2026-00001'), { participantId: 'TNX-2026-00001' });
     await setDoc(doc(db, 'certificates/cert1'), { participantId: 'TNX-2026-00001' });
+    await setDoc(doc(db, 'certificateTemplates/tpl1'), {
+      name: 'NextGen Classic',
+      activeVersionId: null,
+    });
+    await setDoc(doc(db, 'certificateTemplates/tpl1/versions/v1'), {
+      status: 'draft',
+      versionNumber: 1,
+    });
     await setDoc(doc(db, 'feeAccounts/enr1'), { participantId: 'TNX-2026-00001' });
     await setDoc(doc(db, 'auditLogs/a1'), { actorUid: 'u1', action: 'create', entityType: 'lead' });
     await setDoc(doc(db, 'settings/general'), { orgName: 'TerraNext' });
@@ -75,6 +83,8 @@ describe('anonymous access', () => {
     await assertFails(getDoc(doc(db, 'participants/TNX-2026-00001')));
     await assertFails(getDoc(doc(db, 'communications/c1')));
     await assertFails(getDoc(doc(db, 'certificates/cert1')));
+    await assertFails(getDoc(doc(db, 'certificateTemplates/tpl1')));
+    await assertFails(getDoc(doc(db, 'certificateTemplates/tpl1/versions/v1')));
   });
 
   it('cannot read settings, users or audit logs', async () => {
@@ -143,6 +153,8 @@ describe('business collections are read-only to clients', () => {
     'alumniRecords/TNX-2026-00001',
     'certificates/cert1',
     'feeAccounts/enr1',
+    'certificateTemplates/tpl1',
+    'certificateTemplates/tpl1/versions/v1',
   ];
 
   it('refuses client writes even from the most privileged roles', async () => {
@@ -152,6 +164,41 @@ describe('business collections are read-only to clients', () => {
         await assertFails(setDoc(doc(db, path), { tampered: true }));
       }
     }
+  });
+});
+
+describe('certificateTemplates (Certificate Template Engine)', () => {
+  it('lets roles with certificates:view read templates and their versions', async () => {
+    // Founder (super role) and ops_manager/trainer (explicit `certificates:view`
+    // grant) can read directly. system_admin deliberately holds only
+    // `certificates:configure`, not `:view` — same asymmetry the certificates
+    // collection itself already has — so it is excluded here; the admin UI
+    // still works for system_admin because every read goes through a server
+    // action on the Admin SDK, never a direct client Firestore read.
+    for (const role of ['founder', 'ops_manager', 'trainer'] as const) {
+      const db = authed(env, 'u1', role);
+      await assertSucceeds(getDoc(doc(db, 'certificateTemplates/tpl1')));
+      await assertSucceeds(getDoc(doc(db, 'certificateTemplates/tpl1/versions/v1')));
+    }
+  });
+
+  it('denies roles without a certificates grant, e.g. finance', async () => {
+    const db = authed(env, 'u1', 'finance');
+    await assertFails(getDoc(doc(db, 'certificateTemplates/tpl1')));
+    await assertFails(getDoc(doc(db, 'certificateTemplates/tpl1/versions/v1')));
+  });
+
+  it('denies system_admin a direct client read — it holds configure, not view, same as the certificates collection', async () => {
+    const db = authed(env, 'u1', 'system_admin');
+    await assertFails(getDoc(doc(db, 'certificateTemplates/tpl1')));
+  });
+
+  it('never allows a client write, even to create a template or version', async () => {
+    const db = authed(env, 'u1', 'system_admin');
+    await assertFails(setDoc(doc(db, 'certificateTemplates/tpl2'), { name: 'Injected' }));
+    await assertFails(
+      setDoc(doc(db, 'certificateTemplates/tpl1/versions/v2'), { status: 'active' }),
+    );
   });
 });
 
@@ -208,6 +255,8 @@ describe('read scoping follows the permission map', () => {
       'colleges/col1',
       'alumniRecords/TNX-2026-00001',
       'certificates/cert1',
+      'certificateTemplates/tpl1',
+      'certificateTemplates/tpl1/versions/v1',
       'feeAccounts/enr1',
       'auditLogs/a1',
       'settings/general',

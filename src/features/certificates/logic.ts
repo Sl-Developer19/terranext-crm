@@ -92,3 +92,18 @@ export function isVerificationSafe(fields: readonly string[]): boolean {
   const forbidden = new Set(['participantId', 'participantName', 'phone', 'email', 'dob']);
   return !fields.some((field) => forbidden.has(field));
 }
+
+/**
+ * The URL a certificate's QR code encodes — the CRM's own public `/verify`
+ * page, which itself calls the existing `/api/certificates/verify` JSON
+ * endpoint. Never a second verification system: this is the one path a
+ * scanned certificate can be checked through, staff or anonymous.
+ */
+export function buildCertificateVerifyUrl(
+  crmOrigin: string,
+  certificateNo: string,
+  hash: string,
+): string {
+  const params = new URLSearchParams({ no: certificateNo, hash });
+  return `${crmOrigin.replace(/\/$/, '')}/verify?${params.toString()}`;
+}

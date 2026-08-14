@@ -2,5 +2,6 @@
 export { CertificateRegistry } from './components/certificate-registry';
 export { EligibilityQueue } from './components/eligibility-queue';
 export { listCertificates, listEligibilityQueue } from './queries';
-export { evaluateEligibility } from './logic';
+export { evaluateEligibility, buildCertificateVerifyUrl } from './logic';
+export { issueCertificateDownloadUrl } from './actions/manage-certificate';
 export type { Certificate, EligibilityRow, VerificationResult } from './schema';

@@ -36,6 +36,7 @@ export type AuditEntityType =
   | 'attendance'
   | 'assessment'
   | 'certificate'
+  | 'certificate_template'
   | 'career_profile'
   | 'placement'
   | 'employer'
@@ -47,6 +48,9 @@ export type AuditEntityType =
   | 'report'
   | 'settings'
   | 'growth_partner'
+  // Admin-defined Growth Partner recognition tiers (Settings §3) — the
+  // definitions themselves, not a specific partner's assignment to one.
+  | 'leadership_level'
   // TerraNext Community Growth Network — business/organisation referral
   // partner, a distinct bounded context from `growth_partner`.
   | 'community_partner'

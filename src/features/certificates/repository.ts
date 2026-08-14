@@ -7,6 +7,7 @@ import type { DocumentSnapshot, QueryDocumentSnapshot } from 'firebase-admin/fir
 
 import type { ScoredAttempt } from '@/features/assessments/logic';
 import type { AttendanceStatus } from '@/features/attendance/schema';
+import { getIdFormats } from '@/features/settings';
 import { adminDb } from '@/lib/firebase/admin';
 
 import { evaluateEligibility, formatCertificateNo, type EligibilityVerdict } from './logic';
@@ -15,6 +16,8 @@ import type { Certificate, CertificateStatus, VerificationResult } from './schem
 /** Certificate data access (Doc 03 §1.5, BR-03/BR-05). */
 
 const COUNTER_ID = 'certificateNo';
+/** Absolute last-resort fallback only — reached if `settings/idFormats` is
+ * ever unreadable. The real default comes from `getIdFormats().certificatePrefix`. */
 const DEFAULT_PREFIX = 'TNXC';
 
 function asString(value: unknown): string {
@@ -61,6 +64,11 @@ function toCertificate(
     revokedReason: asStringOrNull(data.revokedReason),
     revokedAt: toIso(data.revokedAt),
     verifyHash: asString(data.verifyHash),
+    templateId: asStringOrNull(data.templateId),
+    templateVersionId: asStringOrNull(data.templateVersionId),
+    templateVersionNumber:
+      data.templateVersionNumber != null ? asNumber(data.templateVersionNumber) : null,
+    pdfStoragePath: asStringOrNull(data.pdfStoragePath),
   };
 }
 
@@ -220,10 +228,20 @@ export interface IssueCertificateRecord {
   branchId: string;
   /** Ops override: issue despite failing criteria, with the reason recorded. */
   override: boolean;
+  /** Resolved active certificate template (Certificate Template Engine) — null when none is assigned. */
+  templateId: string | null;
+  templateVersionId: string | null;
+  templateVersionNumber: number | null;
 }
 
 export type IssueOutcome =
-  | { kind: 'issued'; certificateId: string; verdict: EligibilityVerdict }
+  | {
+      kind: 'issued';
+      certificateId: string;
+      verdict: EligibilityVerdict;
+      verifyHash: string;
+      issuedAt: Date;
+    }
   | { kind: 'not_eligible'; verdict: EligibilityVerdict }
   | { kind: 'already_issued'; certificateId: string };
 
@@ -266,6 +284,9 @@ export async function issueCertificate(record: IssueCertificateRecord): Promise<
     .doc(record.participantId)
     .collection('enrolments')
     .doc(record.enrolmentId);
+  // Settings is slow-changing config, read once outside the transaction —
+  // same reasoning as every other ID-prefix reservation in this codebase.
+  const idFormats = await getIdFormats();
 
   return db.runTransaction(async (tx) => {
     // Re-check inside the transaction: two coordinators clicking Issue at
@@ -276,11 +297,15 @@ export async function issueCertificate(record: IssueCertificateRecord): Promise<
 
     const counterSnap = await tx.get(counterRef);
     const prefix =
-      (counterSnap.exists ? asStringOrNull(counterSnap.get('prefix')) : null) ?? DEFAULT_PREFIX;
+      (counterSnap.exists ? asStringOrNull(counterSnap.get('prefix')) : null) ??
+      idFormats.certificatePrefix ??
+      DEFAULT_PREFIX;
     const next = (counterSnap.exists ? asNumber(counterSnap.get('current')) : 0) + 1;
     const certificateId = formatCertificateNo(prefix, now.getFullYear(), next);
 
     tx.set(counterRef, { current: next, prefix, year: now.getFullYear() }, { merge: true });
+
+    const verifyHash = randomBytes(16).toString('hex');
 
     tx.set(db.collection('certificates').doc(certificateId), {
       schemaVersion: 1,
@@ -304,7 +329,11 @@ export async function issueCertificate(record: IssueCertificateRecord): Promise<
       revokedReason: null,
       revokedAt: null,
       overridden: record.override && !verdict.eligible,
-      verifyHash: randomBytes(16).toString('hex'),
+      verifyHash,
+      templateId: record.templateId,
+      templateVersionId: record.templateVersionId,
+      templateVersionNumber: record.templateVersionNumber,
+      pdfStoragePath: null,
       createdAt: now,
       createdBy: record.actorUid,
       updatedAt: now,
@@ -327,13 +356,22 @@ export async function issueCertificate(record: IssueCertificateRecord): Promise<
       byUid: record.actorUid,
     });
 
-    return { kind: 'issued', certificateId, verdict };
+    return { kind: 'issued', certificateId, verdict, verifyHash, issuedAt: now };
   });
 }
 
 /**
  * BR-05: certification creates the alumni record. Existence-checked before
  * create so a re-run is safe (the idempotency the trigger design requires).
+ *
+ * Both writes — the `alumniRecords` doc and the participant's
+ * `status: 'alumni'` flip — happen inside one transaction. Without that,
+ * a crash between the two independent awaits would leave an alumni record
+ * whose participant never actually flipped to `alumni`, and the idempotency
+ * check above ("does `alumniRecords` exist?") would then treat the whole
+ * step as already done on any retry — silently and permanently skipping the
+ * participant update. A transaction makes the two writes all-or-nothing, so
+ * "does the alumni record exist" stays an accurate proxy for "is this done."
  */
 export async function ensureAlumniRecord(
   participantId: string,
@@ -342,32 +380,55 @@ export async function ensureAlumniRecord(
   branchId: string,
 ): Promise<boolean> {
   const db = adminDb();
-  const ref = db.collection('alumniRecords').doc(participantId);
-  const existing = await ref.get();
-  if (existing.exists) return false;
+  const alumniRef = db.collection('alumniRecords').doc(participantId);
+  const participantRef = db.collection('participants').doc(participantId);
 
-  const now = new Date();
-  await ref.set({
-    schemaVersion: 1,
-    branchId,
-    participantId,
-    memberSince: now,
-    triggeredByCertificateId: certificateId,
-    engagement: { referrals: 0, eventsAttended: 0 },
-    consentForSuccessStory: false,
-    createdAt: now,
-    createdBy: actorUid,
-    updatedAt: now,
+  return db.runTransaction(async (tx) => {
+    const existing = await tx.get(alumniRef);
+    if (existing.exists) return false;
+
+    const now = new Date();
+    tx.set(alumniRef, {
+      schemaVersion: 1,
+      branchId,
+      participantId,
+      memberSince: now,
+      triggeredByCertificateId: certificateId,
+      engagement: { referrals: 0, eventsAttended: 0 },
+      consentForSuccessStory: false,
+      nextStepEnrolled: false,
+      createdAt: now,
+      createdBy: actorUid,
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
+
+    tx.update(participantRef, {
+      status: 'alumni',
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
+
+    return true;
+  });
+}
+
+/**
+ * Records where the rendered PDF landed after issuance. Rendering happens
+ * outside the issuance transaction (Storage writes can't join a Firestore
+ * transaction) and is non-fatal if it fails — the certificate is already the
+ * fact of record; a missing PDF is recoverable by regenerating it.
+ */
+export async function setCertificatePdfPath(
+  certificateId: string,
+  pdfStoragePath: string,
+  actorUid: string,
+): Promise<void> {
+  await adminDb().collection('certificates').doc(certificateId).update({
+    pdfStoragePath,
+    updatedAt: new Date(),
     updatedBy: actorUid,
   });
-
-  await db.collection('participants').doc(participantId).update({
-    status: 'alumni',
-    updatedAt: now,
-    updatedBy: actorUid,
-  });
-
-  return true;
 }
 
 export async function revokeCertificateRecord(

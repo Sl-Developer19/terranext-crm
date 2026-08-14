@@ -532,6 +532,14 @@
       ]
     },
     {
+      "collectionGroup": "certificateTemplates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "academyId", "order": "ASCENDING" },
+        { "fieldPath": "programmeId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "enrolments",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -695,6 +703,14 @@
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leadershipLevels",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "displayOrder", "order": "ASCENDING" }
       ]
     },
     {

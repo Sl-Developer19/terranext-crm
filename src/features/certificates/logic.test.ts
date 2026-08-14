@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { canRevoke, evaluateEligibility, formatCertificateNo, isVerificationSafe } from './logic';
+import {
+  buildCertificateVerifyUrl,
+  canRevoke,
+  evaluateEligibility,
+  formatCertificateNo,
+  isVerificationSafe,
+} from './logic';
 
 const PASSING = {
   attendanceStatuses: ['present', 'present', 'present', 'present'] as const,
@@ -123,5 +129,31 @@ describe('isVerificationSafe (public endpoint carries no PII)', () => {
     expect(isVerificationSafe(['certificateNo', 'participantName'])).toBe(false);
     expect(isVerificationSafe(['participantId'])).toBe(false);
     expect(isVerificationSafe(['programmeName', 'phone'])).toBe(false);
+  });
+});
+
+describe('buildCertificateVerifyUrl (Certificate Template Engine QR target)', () => {
+  it('points at the CRM origin’s own /verify page with number and hash as query params', () => {
+    const url = buildCertificateVerifyUrl(
+      'https://crm.terranext.example',
+      'TNXC-2026-00107',
+      'abc123',
+    );
+    expect(url).toBe('https://crm.terranext.example/verify?no=TNXC-2026-00107&hash=abc123');
+  });
+
+  it('strips a trailing slash from the origin', () => {
+    const url = buildCertificateVerifyUrl(
+      'https://crm.terranext.example/',
+      'TNXC-2026-00001',
+      'hash',
+    );
+    expect(url).toBe('https://crm.terranext.example/verify?no=TNXC-2026-00001&hash=hash');
+  });
+
+  it('URL-encodes special characters in either parameter', () => {
+    const url = buildCertificateVerifyUrl('https://crm.terranext.example', 'TNXC 2026', 'a&b');
+    expect(url).toContain('no=TNXC+2026');
+    expect(url).toContain('hash=a%26b');
   });
 });

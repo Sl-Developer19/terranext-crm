@@ -843,6 +843,24 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only (BR-05)
     }
 
+    // ── certificateTemplates/* + versions/* (Certificate Template Engine) ──
+    // Read: any role with `certificates:view` — staff need to see which
+    //   template a certificate came from. Write: Admin SDK only, gated on
+    //   `certificates:configure` inside the server actions (system_admin/
+    //   founder only) — never client-writable, same posture as the
+    //   certificates collection itself: template lifecycle transitions
+    //   (submit/approve/activate/archive) are integrity-critical and must
+    //   not be reachable from a tampered client write.
+    match /certificateTemplates/{templateId} {
+      allow read: if can_certificates_view();
+      allow write: if false; // Admin SDK only
+
+      match /versions/{versionId} {
+        allow read: if can_certificates_view();
+        allow write: if false; // Admin SDK only
+      }
+    }
+
     // ── feeAccounts/* (Doc 03 §1.7, ADR-012) ────────────────────────────────
     // Read: any role with `fees:view` (founder, ops_manager, finance).
     // Write: Admin SDK only. `payments` is an append-only ledger whose
@@ -992,6 +1010,18 @@ service cloud.firestore {
     //   and custom claims, which no rule can safely express.
     match /growthPartners/{partnerId} {
       allow read: if can_growthPartners_view() || isOwnPartnerRecord(partnerId);
+      allow write: if false; // Admin SDK only
+    }
+
+    // ── leadershipLevels/* (Settings §3 — Growth Partner recognition tiers) ─
+    // Admin-defined, not hardcoded (see features/leadership-levels). Read:
+    // staff with `growthPartners:view` OR any signed-in partner (not
+    // row-scoped like their own profile — the level list is shared reference
+    // data, not partner-specific). Write: Admin SDK only, same as every
+    // other catalogue-shaped collection (academies/programmes) — level
+    // definitions are configuration, not a client-writable resource.
+    match /leadershipLevels/{levelId} {
+      allow read: if can_growthPartners_view() || isPartner();
       allow write: if false; // Admin SDK only
     }
 

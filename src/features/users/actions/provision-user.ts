@@ -17,6 +17,8 @@ import {
   type Result,
 } from '@/lib/utils/result';
 
+import { getBrandingSettings } from '@/features/settings';
+
 import { canAssignRole } from '../logic';
 import { provisionUserSchema, type ProvisionUserInput } from '../schema';
 
@@ -118,6 +120,7 @@ export async function provisionUser(
   });
 
   const origin = await appOrigin();
+  const branding = await getBrandingSettings();
   const brandedLink = await generateBrandedResetLink(email, origin);
   // The account was just created, so a null result here means an unexpected
   // Identity Toolkit failure rather than "no such account" — fall back to
@@ -148,6 +151,7 @@ export async function provisionUser(
         cta: { label: 'Set your password', url: brandedLink },
         footerNote: 'This link expires in 1 hour and can only be used once.',
         appOrigin: origin,
+        logoUrl: branding.emailLogoUrl || undefined,
       }),
     });
     if (outcome.status === 'failed') {

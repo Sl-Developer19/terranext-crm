@@ -56,11 +56,18 @@ export interface BrandedEmailContent {
   footerNote?: string;
   /** Origin the logo image is served from — the recipient's mail client fetches it directly. */
   appOrigin: string;
+  /**
+   * Settings §4 `branding.emailLogoUrl` — falls back to the static
+   * `/brand/logo.png` asset when unconfigured (Doc 04 §3 "never break the
+   * email if unconfigured" posture). Left as an explicit param rather than
+   * fetched in here so this stays a pure, synchronously-testable function.
+   */
+  logoUrl?: string | undefined;
 }
 
 export function renderBrandedEmailHtml(content: BrandedEmailContent): string {
   const heading = escapeHtml(content.heading);
-  const logoUrl = `${content.appOrigin}/brand/logo.png`;
+  const logoUrl = content.logoUrl || `${content.appOrigin}/brand/logo.png`;
 
   const ctaBlock = content.cta
     ? `<tr>

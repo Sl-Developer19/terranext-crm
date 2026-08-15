@@ -29,9 +29,18 @@ describe('renderBrandedEmailHtml', () => {
     expect(html).toContain('<p style="margin:0 0 16px;">Ignore this if it was not you.</p>');
   });
 
-  it('points the logo at the given app origin', () => {
+  it('points the logo at the given app origin when unconfigured', () => {
     const html = renderBrandedEmailHtml(base);
     expect(html).toContain('src="https://crm.terranextglobal.com/brand/logo.png"');
+  });
+
+  it('uses the configured branding logo URL when provided, instead of the static default', () => {
+    const html = renderBrandedEmailHtml({
+      ...base,
+      logoUrl: 'https://cdn.example.com/email-logo.png',
+    });
+    expect(html).toContain('src="https://cdn.example.com/email-logo.png"');
+    expect(html).not.toContain('/brand/logo.png');
   });
 
   it('renders a CTA button when provided and omits it otherwise', () => {

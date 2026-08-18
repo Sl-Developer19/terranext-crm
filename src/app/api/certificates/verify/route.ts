@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { verifyCertificate } from '@/features/certificates/repository';
+import { clientIpFromHeaders } from '@/lib/auth/identity';
+import { consumeRateLimit, HOUR_MS } from '@/lib/rate-limit/fixed-window';
 
 /**
  * Public certificate verification (Doc 19 §1 `verifyCertificate`).
@@ -17,10 +19,27 @@ import { verifyCertificate } from '@/features/certificates/repository';
  *    discover which certificate numbers exist.
  * 3. **Revocation is honoured.** A revoked certificate returns valid:false.
  *
- * Rate limiting is a deployment-layer concern (Doc 10 §5) and is listed in
- * the go-live hardening checklist rather than implemented here.
+ * Rate-limited per IP (Doc 27 §2.2, go-live hardening): the response is
+ * already enumeration-safe, so this guards cost/availability, not secrecy —
+ * generous enough for a legitimate employer checking several candidates.
  */
+const PER_IP_PER_HOUR = 60;
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const ip = clientIpFromHeaders(request.headers);
+  const verdict = await consumeRateLimit({
+    scope: 'certVerify_ip',
+    identifier: ip,
+    limit: PER_IP_PER_HOUR,
+    windowMs: HOUR_MS,
+  });
+  if (!verdict.allowed) {
+    return NextResponse.json(
+      { valid: false },
+      { status: 429, headers: { 'Retry-After': String(verdict.retryAfterSeconds) } },
+    );
+  }
+
   const certificateNo = request.nextUrl.searchParams.get('no')?.trim() ?? '';
   const hash = request.nextUrl.searchParams.get('hash')?.trim() ?? '';
 

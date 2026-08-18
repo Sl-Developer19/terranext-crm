@@ -168,6 +168,54 @@ Subcollection **`payments/{id}`** — `{ amountPaise, method, receivedAt, receiv
 
 **`communications/{id}`** — `{ channel: 'email'|'sms'|'whatsapp', direction: 'outbound'|'inbound', refType: 'lead'|'participant', refId, templateKey|null, subject, bodyPreview, status: 'queued'|'sent'|'failed', sentAt, byUid|'system' }` (FR-10.3: nothing sent outside the log).
 
+### 1.8 Growth Partner Management (GPMS, Doc 25/ADR-014)
+
+A referral is an ordinary `leads` document (§1.3) with `source: 'referral'` and a `partnerId`/`partnerName` pair added — no forked acquisition pipeline. Only concepts with no existing analog are new collections:
+
+**`growthPartners/{partnerId}`** — external referral-partner identity
+```ts
+{ displayName, email, phone, organizationName: string|null,
+  // Free-text background from public registration (referral code, experience,
+  // areas of interest, …) — same role as leads.activities' note text; the
+  // approver's only view into anything the strict intake contract has no
+  // column for. Null for staff-entered partners (2026-07-26 addition, closing
+  // a gap where the website form's extra fields were silently discarded).
+  applicationNotes: string|null,
+  status: 'pending_approval'|'active'|'suspended'|'rejected',
+  leadershipLevel: 'bronze'|'silver'|'gold'|'platinum',
+  authUid: string|null,          // Firebase Auth uid, set once approved
+  approvedAt: Timestamp|null, approvedBy: string|null }
+```
+
+**`rewardRules/{ruleId}`** — configurable reward computation, never hardcoded
+```ts
+{ programmeId: string|'ALL',
+  kind: 'flat'|'percent', amountPaise: number|null, percentBps: number|null,  // 1-10000
+  active: boolean, effectiveFrom: Timestamp }
+```
+
+**`rewardLedger/{ledgerId}`** — one immutable entry per reward event (append-only, ADR-007 immutability posture)
+```ts
+{ partnerId, leadId, participantId, feeAccountId, paymentId, ruleId,
+  amountPaise, status: 'accrued'|'paid' }
+```
+
+**`wallets/{partnerId}`** — running balance, updated only inside the same transaction that writes a transaction entry (never a bare counter write — same rationale as `batches.enrolledCount`)
+```ts
+{ balancePaise: number }
+```
+Subcollection **`wallets/{partnerId}/transactions/{txId}`** — `{ kind: 'credit'|'debit', amountPaise, reason, refLedgerId|refPayoutId }`.
+
+**`payoutRequests/{payoutId}`** — `{ partnerId, amountPaise, status: 'requested'|'approved'|'rejected'|'processing'|'paid', requestedAt, decidedBy, decidedAt }`.
+
+**`partnerNotifications/{partnerId}/items/{id}`** — same shape as an in-app notification, scoped per partner.
+
+Extended fields (existing collections, additive only — no shape break):
+- `leads/{leadId}`: `+ partnerId: string|null`, `+ partnerName: string|null` (mirrors `assignedToUid`/`assignedToName`).
+- `participants/{participantId}`: `+ partnerId: string|null` (propagated from the originating lead at admission conversion).
+
+Reward computation is an added step inside the existing `recordPayment` transaction (§1.7) — not a new payments collection: on payment, a matching `rewardRules` doc is found, a `rewardLedger` entry is written, and the partner's `wallets` balance is credited, all in one transaction.
+
 ## 2. Relationship Diagram
 
 ```mermaid
@@ -188,6 +236,11 @@ erDiagram
     EMPLOYER ||--o{ PLACEMENT : receives
     ENROLMENT ||--|| FEE_ACCOUNT : billed
     PARTICIPANT ||--o{ COMMUNICATION : logged
+    GROWTH_PARTNER ||--o{ LEAD : "refers (source=referral)"
+    GROWTH_PARTNER ||--|| WALLET : owns
+    GROWTH_PARTNER ||--o{ REWARD_LEDGER : earns
+    FEE_ACCOUNT ||--o| REWARD_LEDGER : "triggers reward (in recordPayment txn)"
+    WALLET ||--o{ PAYOUT_REQUEST : requests
 ```
 
 ## 3. Index Strategy
@@ -209,6 +262,12 @@ Single-field defaults cover most lookups. Composite indexes (initial `firestore.
 | communications | `refType ASC, refId ASC, sentAt DESC` | per-record comm history |
 | auditLogs | `entityType ASC, entityId ASC, at DESC` | per-record audit trail |
 | auditLogs | `actorUid ASC, at DESC` | per-user activity review |
+| leads | `partnerId ASC, deletedAt ASC, updatedAt DESC` | "my referrals" (partner portal) |
+| leads | `deletedAt ASC, stage ASC, partnerId ASC` | referral-attributed pipeline report |
+| growthPartners | `deletedAt ASC, createdAt DESC`; `email ASC, deletedAt ASC`; `authUid ASC, deletedAt ASC` | directory listing; dedupe on registration; session→partner lookup |
+| rewardLedger | `partnerId ASC, createdAt DESC`; `partnerId ASC, status ASC` | partner reward history; accrued-vs-paid filter |
+| payoutRequests | `partnerId ASC, status ASC`; `partnerId ASC, requestedAt DESC` | payout queue per partner |
+| rewardRules | `programmeId ASC, active ASC` | rule lookup at reward-computation time |
 
 Rule: every new list screen must name its query + index in the feature's plan **before** implementation; unindexed fan-out queries are rejected in review.
 

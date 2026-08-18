@@ -18,11 +18,12 @@ export const metadata: Metadata = { title: 'Counselling' };
 export default async function CounsellingPage() {
   const session = await requirePermission('counselling:view');
   const canRecord = can(session.role, 'counselling:create');
+  const canEdit = can(session.role, 'counselling:update');
 
   const [sessions, leads, programmes] = await Promise.all([
     listSessions(),
     canRecord ? listCounsellableLeads() : Promise.resolve([]),
-    canRecord ? listProgrammeOptions() : Promise.resolve([]),
+    canRecord || canEdit ? listProgrammeOptions() : Promise.resolve([]),
   ]);
 
   return (
@@ -41,7 +42,11 @@ export default async function CounsellingPage() {
       />
       <Card>
         <CardContent>
-          <SessionsView sessions={sessions} />
+          <SessionsView
+            sessions={sessions}
+            programmes={programmes.map((p) => ({ id: p.id, name: p.name }))}
+            canEdit={canEdit}
+          />
         </CardContent>
       </Card>
     </div>

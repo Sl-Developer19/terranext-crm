@@ -19,6 +19,11 @@ export const registerPublicGrowthPartnerSchema = z
     email: z.string().trim().email('Enter a valid email address'),
     phone: z.string().trim().regex(E164, 'Enter phone in E.164 format, e.g. +919876543210'),
     organizationName: z.string().trim().max(160).optional().or(z.literal('')),
+    // Same role as `leads/public-schema.ts`'s `message`: everything the
+    // contract has no dedicated column for (background, referral code,
+    // areas of interest, …) travels here so the approver has it, rather
+    // than the website silently discarding it at intake.
+    applicationNotes: z.string().trim().max(1000).optional(),
     // Honeypot. Non-empty means the submission is silently dropped — answering
     // with a normal-looking success denies a bot any signal about what it tripped.
     hp_field: z.string().max(0).optional(),

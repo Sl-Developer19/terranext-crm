@@ -22,6 +22,17 @@ describe('registerPublicGrowthPartnerSchema', () => {
     ).toBe(true);
   });
 
+  it('accepts optional application notes, rejecting past the 1000-char cap', () => {
+    expect(
+      registerPublicGrowthPartnerSchema.safeParse(valid({ applicationNotes: 'Referral: ABC123' }))
+        .success,
+    ).toBe(true);
+    expect(
+      registerPublicGrowthPartnerSchema.safeParse(valid({ applicationNotes: 'x'.repeat(1001) }))
+        .success,
+    ).toBe(false);
+  });
+
   it('rejects a non-E.164 phone number', () => {
     expect(
       registerPublicGrowthPartnerSchema.safeParse(valid({ phone: '9876543210' })).success,

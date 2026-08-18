@@ -111,7 +111,7 @@ BR-01…BR-09 (BRD §25 + Academy §6), each mapped across all engineering dimen
 | Affected modules | Placements, Fees, Website (public policy page) |
 | Database | `placements.feeDisclosure.terranextFeePaise` — literal `0`, rules-constrained; third-party costs are free-text disclosure, never ledger entries |
 | UI | Placement record displays the zero-fee disclosure; fee module structurally cannot attach a placement-typed charge |
-| Validation | Rules: `feeDisclosure.terranextFeePaise == 0`; no fee-account linkage from placements |
+| Validation | Zod schema never accepts a fee field from the client; `placements/repository.ts` hardcodes `terranextFeePaise: 0` on create; no fee-account linkage from placements. **Correction (2026-07-26 review, Doc 27):** `firestore.rules` enforces this via a blanket `write: if false` (Admin SDK only), not a field-level rule constraint — safe today because no client write path exists at all, but the rule carries an explicit comment that a future loosening of that blanket deny must add the field check, or BR-08 loses its rules-layer backstop |
 | Security | Any attempt is a rules denial — logged pattern worth alerting on (integrity signal) |
 | Reports | Placement pipeline report includes disclosure completeness |
 | Notifications | Disclosure included in placement-stage communications |

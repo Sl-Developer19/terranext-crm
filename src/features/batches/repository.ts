@@ -5,7 +5,7 @@ import type { DocumentSnapshot, Query, QueryDocumentSnapshot } from 'firebase-ad
 
 import { adminDb } from '@/lib/firebase/admin';
 
-import { hasCapacity } from './logic';
+import { acceptsAllocations, hasCapacity } from './logic';
 import type {
   Batch,
   BatchFilters,
@@ -149,10 +149,30 @@ export async function findSessions(batchId: string): Promise<BatchSession[]> {
  * Batch roster via a collection-group query on `enrolments` (Doc 03 §3 CG
  * index: batchId, status). The participant id is the enrolment's grandparent
  * document, so no extra lookup is needed to identify who is on the roster.
+ *
+ * Batch, attendance, and assessment detail pages all read the roster through
+ * this one function — if the required collection-group index on `batchId`
+ * is ever missing or still building, Firestore rejects the query outright
+ * (`FAILED_PRECONDITION`), and without this guard that exception would
+ * propagate up through every one of those pages' `Promise.all` and crash the
+ * whole Server Component render. An empty roster is the correct degraded
+ * state here (the page already renders "no participants allocated" for that
+ * case) — the error is still logged, not swallowed silently.
  */
 export async function findRoster(batchId: string): Promise<RosterEntry[]> {
   const db = adminDb();
-  const snap = await db.collectionGroup('enrolments').where('batchId', '==', batchId).get();
+
+  let snap;
+  try {
+    snap = await db.collectionGroup('enrolments').where('batchId', '==', batchId).get();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('findRoster: enrolments query failed, returning an empty roster', {
+      batchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
 
   const entries = await Promise.all(
     snap.docs.map(async (doc) => {
@@ -250,7 +270,8 @@ export async function setBatchStatusRecord(
     .update({ status, updatedAt: new Date(), updatedBy: actorUid });
 }
 
-export type AllocationOutcome = 'allocated' | 'batch_full' | 'batch_missing' | 'already_allocated';
+export type AllocationOutcome =
+  'allocated' | 'batch_full' | 'batch_missing' | 'already_allocated' | 'batch_not_accepting';
 
 /**
  * BR-04 capacity allocation — the whole point of this module.
@@ -281,6 +302,14 @@ export async function allocateToBatch(
 
     // Re-allocating to the same batch is a no-op, not a second seat.
     if (asString(enrolmentSnap.get('batchId')) === batchId) return 'already_allocated';
+
+    // BR-04's capacity check is transactional (below); status must be
+    // re-checked here too, not just in the action's pre-check — otherwise a
+    // batch that transitions to completed/cancelled between the pre-check
+    // and this transaction's commit could still receive an allocation.
+    if (!acceptsAllocations(batchSnap.get('status') as BatchStatus)) {
+      return 'batch_not_accepting';
+    }
 
     const capacity = asNumber(batchSnap.get('capacity'));
     const enrolledCount = asNumber(batchSnap.get('enrolledCount'));

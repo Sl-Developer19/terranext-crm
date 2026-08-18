@@ -45,6 +45,20 @@ Contract stability note: the website deploys independently (ADR-002) — **break
 
 ### `verifyCertificate` (HTTPS GET) — `{no, hash}` → `{ valid: boolean; programmeName?: string; issuedAt?: string }`. Invalid/revoked/missing are indistinguishable in output (no oracle).
 
+### `registerGrowthPartner` (HTTPS POST `/api/registerGrowthPartner`) — the website↔CRM GPMS interface (Doc 25 §4 step 1), mirrors `createLead`
+
+```ts
+Input = z.object({
+  displayName: z.string().min(2).max(120),
+  email: z.string().email(),
+  phone: z.string().regex(E164),
+  organizationName: z.string().max(160).optional(),
+}).strict();
+Output = { partnerId: string };   // status starts pending_approval — no auth account minted yet
+Errors: validation; conflict (email already registered); rate limit + honeypot, same posture as createLead.
+```
+Contract stability note: same as `createLead` — breaking changes require a versioned path and coordinated website release (ADR-002).
+
 ## 2b. Contracts — Authentication (route handlers, ADR-013)
 
 ### `login` (HTTPS POST `/api/auth/login`) — the official authentication entry point
@@ -65,6 +79,11 @@ securityEvents on the 10th consecutive failure, auditLogs 'login' + users.lastLo
 ```
 
 ### `logout` (HTTPS DELETE `/api/session`) — revokes refresh tokens, clears cookie, audits sign-out. (Future: moves to `/api/auth/logout` alongside `/api/auth/refresh`, `/api/auth/verify-email`, `/api/auth/forgot-password`, `/api/auth/reset-password`.)
+
+### Growth Partner session (GPMS, ADR-014) — parallel to, never sharing, the staff session above
+
+`POST /api/partner-session` — mints the partner session cookie (`PARTNER_SESSION_COOKIE_NAME`) after credential verification against a `growthPartners` doc with `status: 'active'` and a set `authUid`; token carries `{ actorType: 'growth_partner', partnerId, status }`, no `role` claim.
+`DELETE /api/partner-session` — revokes refresh tokens, clears the partner cookie, audits `login`/`sign_out` under `actorRole: 'growth_partner'`. Not covered by staff middleware; clears its own cookie independent of a valid session.
 
 ## 3. Contracts — Staff Surface (callables & server actions; permission per Doc 19)
 
@@ -104,6 +123,21 @@ applyDiscount: { feeAccountId, discountPaise: IntPositive, reason: z.string().mi
 sendCommunication:  { refType: 'lead'|'participant', refId, channel, templateKey, variables: Record<string,string> } → { communicationId }
 requestUploadTicket:{ participantId, kind: DocKind, fileName, sizeBytes: max 10MB, contentType: allowList } → { docId, uploadUrl, expiresAt }
 issueDownloadUrl:   { participantId, docId } → { url, expiresAt }   // 15-min
+
+// Growth Partner Management (GPMS, Doc 25/ADR-014) — staff-side
+decideGrowthPartner:    { partnerId, decision: 'approve'|'reject', reason?: string } → { ok: true }
+  // approve mints a Firebase Auth user + actorType claim; permission: founder|system_admin|ops_manager
+setGrowthPartnerStatus: { partnerId, status: 'active'|'suspended' } → { ok: true }
+manageRewardRules:      { ruleId?, programmeId: string|'ALL', kind: 'flat'|'percent', amountPaise?, percentBps?, active, effectiveFrom } → { ruleId }
+  // permission: system_admin (configure); amountPaise required iff kind=flat, percentBps (1-10000) required iff kind=percent
+decidePayout:           { payoutId, decision: 'approve'|'reject'|'paid' } → { ok: true }
+  // permission: founder|finance; 'paid' debits wallet + writes wallets/*/transactions in the same transaction
+```
+
+Growth Partner-side (via `requirePartnerSession()`, never `requirePermission()`):
+```ts
+updateOwnProfile: { displayName, phone, organizationName? } → { ok: true }   // own growthPartners doc only
+requestPayout:    { amountPaise: IntPositive } → { payoutId }                 // precondition: amountPaise ≤ wallets.balancePaise
 ```
 
 Validation is layered identically everywhere: schema (`validation`) → permission (`permission`) → business rule (`precondition` with `rule` id) → transactional integrity (`conflict`). UI copy maps codes per Doc 08 §6.

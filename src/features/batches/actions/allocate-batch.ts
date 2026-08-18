@@ -57,6 +57,12 @@ export async function allocateBatch(input: AllocateBatchInput): Promise<Result<{
         `Batch ${batch.code} is full (${batch.capacity} of ${batch.capacity} seats taken).`,
       );
     }
+    if (outcome === 'batch_not_accepting') {
+      return preconditionError(
+        'BR-04',
+        `Batch ${batch.code} is no longer accepting allocations. Please refresh and try again.`,
+      );
+    }
 
     await writeAudit({
       actorUid: session.uid,

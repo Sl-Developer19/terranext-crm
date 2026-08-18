@@ -1,6 +1,6 @@
 import type { StatusKind } from '@/components/ui/badge';
 
-import type { LeadershipLevel, PartnerStatus } from './schema';
+import type { PartnerStatus } from './schema';
 
 /** Human-readable status names + status-badge kind (Doc 07 §1 semantic color). */
 export const PARTNER_STATUS_LABELS: Record<PartnerStatus, string> = {
@@ -17,9 +17,8 @@ export const PARTNER_STATUS_BADGE: Record<PartnerStatus, StatusKind> = {
   rejected: 'neutral',
 };
 
-export const LEADERSHIP_LEVEL_LABELS: Record<LeadershipLevel, string> = {
-  bronze: 'Bronze',
-  silver: 'Silver',
-  gold: 'Gold',
-  platinum: 'Platinum',
-};
+// Leadership level labels are no longer a fixed map here — they're admin
+// data in the `leadershipLevels` collection (Settings §3, see
+// `features/leadership-levels`). Consumers resolve a partner's level via
+// `findLeadershipLevelBySlug(partner.leadershipLevel)` instead of a lookup
+// table, so a renamed/added tier never needs a code change.

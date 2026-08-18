@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { clientErrorReportSchema } from '@/lib/observability/client-error-schema';
 import { reportServerError } from '@/lib/observability/error-reporter';
 import { getSession } from '@/lib/auth/session';
+import { clientIpFromHeaders } from '@/lib/auth/identity';
+import { consumeRateLimit, HOUR_MS } from '@/lib/rate-limit/fixed-window';
 import { ERROR_HTTP_STATUS } from '@/lib/utils/result';
 
 /**
@@ -11,8 +13,28 @@ import { ERROR_HTTP_STATUS } from '@/lib/utils/result';
  * reported to Cloud Error Reporting server-side. Deliberately unauthenticated
  * (an error can occur before/without a session, e.g. on the login screen)
  * — the schema length-caps every field against payload abuse.
+ *
+ * Rate-limited per IP (Doc 27 §2.4): guards against a scripted flood costing
+ * Cloud Error Reporting calls and drowning the real signal, generous enough
+ * that a real browser session hitting several genuine errors is never
+ * blocked. Silently drops over-limit reports (200 OK, nothing recorded) —
+ * this is telemetry, not a user-facing action, so it fails open quietly
+ * rather than surfacing a second error about the first.
  */
+const PER_IP_PER_HOUR = 30;
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const ip = clientIpFromHeaders(request.headers);
+  const verdict = await consumeRateLimit({
+    scope: 'errorReport_ip',
+    identifier: ip,
+    limit: PER_IP_PER_HOUR,
+    windowMs: HOUR_MS,
+  });
+  if (!verdict.allowed) {
+    return NextResponse.json({ ok: true, data: { status: 'dropped' } });
+  }
+
   const parsed = clientErrorReportSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(

@@ -241,7 +241,7 @@ export function BatchWorkspace({
                     {sessions.map((session) => (
                       <TableRow key={session.id}>
                         <TableCell className="font-medium">
-                          {format(new Date(session.date), 'PP')}
+                          {session.date ? format(new Date(session.date), 'PP') : '—'}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {session.topic ?? '—'}

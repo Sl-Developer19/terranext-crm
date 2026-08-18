@@ -68,6 +68,15 @@ export interface AudioLevelSample {
   /** True when recent samples are hard against the ceiling — the input gain
    * is too hot and the recording will distort. */
   clipping: boolean;
+  /**
+   * One entry per physical input channel (index-matched to
+   * `AudioDeviceInfo.channelCount`), split via a `ChannelSplitterNode` —
+   * present only when the opened track negotiated more than one channel.
+   * `null`/absent for the overwhelmingly common single-channel case,
+   * which is the only case this has actually been exercised against — a
+   * genuine multi-channel USB interface is required to verify this path.
+   */
+  perChannel?: AudioLevelSample[];
 }
 
 export type AudioQualityStatus = 'ok' | 'low' | 'silent' | 'clipping' | 'disconnected';

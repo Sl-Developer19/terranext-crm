@@ -108,6 +108,53 @@ export type ChunkStatus = (typeof CHUNK_STATUSES)[number];
 const requiredText = (min: number, max: number, message: string) =>
   z.string().trim().min(min, message).max(max);
 
+/**
+ * Real, hardware-channel speaker separation (AI Knowledge Capture Room
+ * Hardware Requirements). Corrected model, per the actual classroom
+ * receiver: 4 physical wireless transmitters (1 trainer headset + 3
+ * student handhelds) do not mean 4 logical identities. The receiver groups
+ * multiple physical microphones onto shared logical channels, and
+ * TerraNext's own logical model on top of that is exactly two speaker
+ * identities — `'trainer'` and `'students'` — never per-student numbering.
+ * If a receiver *does* expose more than 2 discrete channels (e.g. each
+ * student handheld on its own line, ungrouped by the hardware), the fix
+ * lives entirely in *how many rows* map to `'students'` in Settings — every
+ * one of them still resolves to the single `'students'` identity, never
+ * `student_1`/`student_2`/etc. `MAX_MAPPED_CHANNELS` bounds how many
+ * physical channels can be mapped at all (covers that discrete-channel
+ * case); it is not a count of distinguishable speakers, which stays fixed
+ * at 2 (`'trainer'`, `'students'`) plus `'unassigned'`.
+ */
+export const MAX_MAPPED_CHANNELS = 4;
+export const CHANNEL_ROLES = ['trainer', 'students', 'unassigned'] as const;
+export type ChannelRole = (typeof CHANNEL_ROLES)[number];
+
+/** One physical input channel's assignment — e.g. "channel 0 (as the
+ * ChannelSplitterNode / MediaStreamTrack reports it) is the trainer's
+ * headset". Configured in AI Intelligence Settings, not hardcoded, since
+ * receiver wiring varies per classroom/kit. Multiple channels may map to
+ * the same role — e.g. three discrete student channels can all be mapped
+ * to `'students'`, grouping them into one logical identity rather than
+ * creating separate per-student ones. */
+export interface ChannelRoleMapping {
+  channelIndex: number;
+  role: ChannelRole;
+  /** Trainer-facing label — defaults to the role's display name ("Trainer" /
+   * "Students") and rarely needs overriding, since students are grouped, not
+   * individually named. */
+  label: string;
+}
+
+export const channelRoleMappingSchema = z.object({
+  channelIndex: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_MAPPED_CHANNELS - 1),
+  role: z.enum(CHANNEL_ROLES),
+  label: requiredText(1, 60, 'Give this channel a label.'),
+});
+
 export const createSessionSchema = z.object({
   title: requiredText(3, 200, 'Give the session a title (at least 3 characters).'),
   batchId: z
@@ -134,6 +181,17 @@ export const createSessionSchema = z.object({
 });
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 
+/** Which physical channel this chunk came from — `null` for the single-
+ * mixed-stream case (every session today). Only set when channel-preserving
+ * capture actually ran (see `AiSessionChunk.channelIndex`'s doc comment). */
+const channelIndexField = z
+  .number()
+  .int()
+  .min(0)
+  .max(MAX_MAPPED_CHANNELS - 1)
+  .nullable()
+  .default(null);
+
 export const requestChunkUploadSchema = z.object({
   sessionId: z.string().min(1),
   chunkIndex: z
@@ -141,6 +199,7 @@ export const requestChunkUploadSchema = z.object({
     .int()
     .min(0)
     .max(MAX_CHUNKS_PER_SESSION - 1),
+  channelIndex: channelIndexField,
   contentType: z.enum(ALLOWED_AUDIO_CONTENT_TYPES),
   sizeBytes: z
     .number()
@@ -158,6 +217,7 @@ export const confirmChunkUploadSchema = z.object({
     .int()
     .min(0)
     .max(MAX_CHUNKS_PER_SESSION - 1),
+  channelIndex: channelIndexField,
   // A little slack over the nominal chunk length for rollover-timer jitter —
   // never a full extra chunk's worth.
   durationSeconds: z
@@ -176,8 +236,17 @@ export const finalizeSessionRecordingSchema = z.object({
     .int()
     .positive()
     .max(MAX_SESSION_DURATION_SECONDS + 60),
+  /** How many discrete channels were actually captured — `1` (the default)
+   * for every session today. Only `>1` when the browser genuinely
+   * negotiated that many channels during a channel-preserving recording. */
+  capturedChannelCount: z.number().int().min(1).max(MAX_MAPPED_CHANNELS).default(1),
 });
 export type FinalizeSessionRecordingInput = z.infer<typeof finalizeSessionRecordingSchema>;
+
+export const startSessionRecordingSchema = z.object({
+  sessionId: z.string().min(1),
+});
+export type StartSessionRecordingInput = z.infer<typeof startSessionRecordingSchema>;
 
 export const pauseSessionRecordingSchema = z.object({
   sessionId: z.string().min(1),
@@ -199,11 +268,23 @@ export const deleteSessionSchema = z.object({
 });
 export type DeleteSessionInput = z.infer<typeof deleteSessionSchema>;
 
+export const getSessionAudioSchema = z.object({
+  sessionId: z.string().min(1),
+});
+export type GetSessionAudioInput = z.infer<typeof getSessionAudioSchema>;
+
 export const updateAiSettingsSchema = z.object({
   autoClassifySpeakers: z.boolean(),
   notifyTrainerOnCompletion: z.boolean(),
   audioRetentionDays: z.number().int().min(7).max(3650),
   defaultRecordingSource: z.enum(RECORDING_SOURCES),
+  channelRoleMap: z
+    .array(channelRoleMappingSchema)
+    .max(MAX_MAPPED_CHANNELS)
+    .refine(
+      (rows) => new Set(rows.map((r) => r.channelIndex)).size === rows.length,
+      'Each channel can only be mapped once.',
+    ),
 });
 export type UpdateAiSettingsInput = z.infer<typeof updateAiSettingsSchema>;
 
@@ -241,6 +322,12 @@ export interface AiSession {
   pausedDurationSeconds: number;
   pauseCount: number;
   pauseHistory: PauseEvent[];
+  /** How many discrete input channels this recording actually captured —
+   * `1` for every session today (single mixed stream, `channelIndex: null`
+   * on every chunk). Only `>1` when the browser genuinely negotiated that
+   * many channels and channel-preserving capture ran; set once, at
+   * finalize, from what really happened during recording. */
+  capturedChannelCount: number;
   processingJobId: string | null;
   transcriptId: string | null;
   summaryId: string | null;
@@ -265,8 +352,26 @@ export interface AiSessionChunk {
   durationSeconds: number | null;
   attempts: number;
   error: string | null;
+  /** Which physical input channel this chunk's audio came from — `null` for
+   * every chunk today (single-mixed-stream capture; see `AudioSource` in
+   * `audio/types.ts`). Reserved for a future channel-preserving capture
+   * path; nothing currently writes a non-null value. */
+  channelIndex: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One playable segment of a finalized session's recording — a short-lived
+ * signed GET URL minted on demand (never stored) plus the timing needed to
+ * place it on the session's overall timeline. See
+ * `actions/get-session-audio.ts#getSessionPlaybackManifest`.
+ */
+export interface PlaybackChunk {
+  chunkIndex: number;
+  url: string;
+  startOffsetSec: number;
+  durationSeconds: number;
 }
 
 export interface AiProcessingJob {
@@ -279,11 +384,22 @@ export interface AiProcessingJob {
   chunksTotal: number | null;
   attempts: number;
   error: string | null;
+  /** Which stage was in progress when this job failed — `null` unless `stage === 'failed'`. */
+  failedAtStage: AiJobStage | null;
   speechProvider: string | null;
   summaryProvider: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** How `speaker`/`speakerLabel` were determined. `'channel'` means real,
+ * hardware-verified identity from a mapped physical input channel (see
+ * `ChannelRoleMapping`) — `'heuristic'` means a text-only AI guess from
+ * wording, with no audio/channel evidence behind it. Every segment
+ * produced today is `'heuristic'`; nothing yet captures real per-channel
+ * audio. Never render a `'heuristic'` segment as if it were verified. */
+export const ATTRIBUTION_SOURCES = ['channel', 'heuristic'] as const;
+export type AttributionSource = (typeof ATTRIBUTION_SOURCES)[number];
 
 export interface TranscriptSegment {
   speaker: SpeakerRole;
@@ -291,6 +407,10 @@ export interface TranscriptSegment {
   text: string;
   startSec: number;
   endSec: number;
+  attributionSource: AttributionSource;
+  /** Which physical input channel this segment's speaker identity came
+   * from, when `attributionSource === 'channel'` — otherwise `null`. */
+  channelIndex: number | null;
 }
 
 export interface AiTranscript {
@@ -309,6 +429,12 @@ export interface AiSummary {
   keyLearningPoints: string[];
   importantQuestions: string[];
   actionItems: string[];
+  /** Added in schemaVersion 2 — empty/blank on a summary generated before this change, not an error. */
+  trainerDiscussion: string;
+  studentParticipation: string;
+  importantObservations: string[];
+  followUpRequired: string[];
+  participantInsights: string[];
   createdAt: string;
 }
 
@@ -326,6 +452,8 @@ export interface AiIntelligenceSettings {
   audioRetentionDays: number;
   /** Classroom Hardware Mode default — see `RECORDING_SOURCES` above. */
   defaultRecordingSource: RecordingSourceKind;
+  /** Which physical input channel maps to which speaker — see `ChannelRoleMapping`. Empty until an admin configures it; no channel is assumed by default. */
+  channelRoleMap: ChannelRoleMapping[];
   activeSpeechProvider: string;
   activeSummaryProvider: string;
   updatedAt: string;

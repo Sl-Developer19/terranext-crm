@@ -36,6 +36,10 @@ Pre-development architecture and hardening documentation, produced before any co
 | [22 — Implementation Roadmap](22-implementation-roadmap.md) | Milestones M1–M8: objectives, deliverables, acceptance criteria, client-input dependencies |
 | [23 — Enterprise Architecture Review](23-enterprise-architecture-review.md) | **Final gate review: category scores, binding amendments, scaffold approval** |
 
+## AI Intelligence Platform Documentation Set
+
+Product documentation for the implemented AI Intelligence Platform module (session recording, transcription, AI summarization). Written from the codebase as built — not a blueprint for future work. Split by audience into [Client Documentation](ai-intelligence-platform/client/) (User Guide, Administrator Guide — production-ready functionality only) and [Internal Engineering Documentation](ai-intelligence-platform/engineering/) (Architecture, Developer, API/AI Workflow guides, plus a consolidated Known Limitations & Engineering Notes). Start at [ai-intelligence-platform/README.md](ai-intelligence-platform/README.md).
+
 ## Status
 
 - Phase A approved with conditions C-1…C-4 (accepted, folded into M1).

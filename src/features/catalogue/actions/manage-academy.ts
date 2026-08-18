@@ -91,6 +91,9 @@ export async function updateAcademy(input: UpdateAcademyInput): Promise<Result<{
     const changes: Record<string, { before: unknown; after: unknown }> = {};
     if (existing.name !== fields.name) changes.name = { before: existing.name, after: fields.name };
     if (existing.slug !== fields.slug) changes.slug = { before: existing.slug, after: fields.slug };
+    if (existing.displayOrder !== fields.displayOrder) {
+      changes.displayOrder = { before: existing.displayOrder, after: fields.displayOrder };
+    }
 
     await writeAudit({
       actorUid: session.uid,

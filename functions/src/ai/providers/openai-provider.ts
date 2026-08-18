@@ -1,5 +1,6 @@
 import { extractJson, toSpeakerRole } from './json';
 import type {
+  SpeakerRole,
   SpeechProvider,
   SummaryProvider,
   SummaryResult,
@@ -114,6 +115,7 @@ export class OpenAISpeechProvider implements SpeechProvider {
     audioBuffer: Buffer;
     contentType: string;
     sessionTitle: string;
+    knownSpeaker?: { role: SpeakerRole; label: string; channelIndex: number } | null;
   }): Promise<TranscriptionResult> {
     const whisper = await transcribeWithWhisper(
       this.apiKey,
@@ -124,6 +126,23 @@ export class OpenAISpeechProvider implements SpeechProvider {
 
     if (whisper.segments.length === 0) {
       return { fullText: whisper.text, language: whisper.language, segments: [] };
+    }
+
+    // Real hardware channel identity beats any guess — skip the
+    // text-classification pass entirely rather than let a heuristic
+    // second-guess a known-correct answer (and waste an API call doing it).
+    if (input.knownSpeaker) {
+      const { role, label, channelIndex } = input.knownSpeaker;
+      const segments: TranscriptSegment[] = whisper.segments.map((s) => ({
+        speaker: role,
+        speakerLabel: label,
+        text: s.text,
+        startSec: s.start,
+        endSec: s.end,
+        attributionSource: 'channel',
+        channelIndex,
+      }));
+      return { fullText: whisper.text, language: whisper.language, segments };
     }
 
     const classificationPrompt =
@@ -152,6 +171,8 @@ export class OpenAISpeechProvider implements SpeechProvider {
         text: s.text,
         startSec: s.start,
         endSec: s.end,
+        attributionSource: 'heuristic',
+        channelIndex: null,
       };
     });
 
@@ -170,13 +191,23 @@ export class OpenAISummaryProvider implements SummaryProvider {
 
   async summarize(input: { transcriptText: string; sessionTitle: string }): Promise<SummaryResult> {
     const prompt =
-      `You are analysing the transcript of a training session titled "${input.sessionTitle}". ` +
-      'Produce a concise executive summary, the concrete key learning points covered, ' +
-      'any important questions raised (by trainer or students), and any action items or ' +
-      'follow-ups mentioned. Respond with ONLY JSON ' +
-      '{"executiveSummary":"<2-4 sentence summary>","keyLearningPoints":["..."],' +
-      '"importantQuestions":["..."],"actionItems":["..."]}. Use an empty array for any ' +
-      'category with nothing genuinely relevant — do not invent content to fill it.\n\n' +
+      `You are analysing the transcript of a classroom training session titled ` +
+      `"${input.sessionTitle}". Produce a professional session summary grounded strictly in ` +
+      'what the transcript actually contains. Respond with ONLY JSON in exactly this shape:\n' +
+      '{"executiveSummary":"<2-4 sentence overview>",' +
+      '"trainerDiscussion":"<narrative of what the trainer covered/explained>",' +
+      '"studentParticipation":"<narrative of how students engaged — questions, answers, engagement level>",' +
+      '"keyLearningPoints":["..."],' +
+      '"importantQuestions":["..."],' +
+      '"importantObservations":["<notable moments that are not a learning point or a question>"],' +
+      '"actionItems":["..."],' +
+      '"followUpRequired":["<concrete next steps implied but not phrased as a direct action item>"],' +
+      '"participantInsights":["<per-student observation, ONLY if that student is identifiable in the transcript>"]}\n\n' +
+      'Rules: use an empty string/array for any field with nothing genuinely relevant — never ' +
+      'invent content to fill it. Never invent student names, attendance, statements, or ' +
+      'conclusions that are not actually present in the transcript below; if speakers are not ' +
+      'individually distinguishable, leave "participantInsights" empty rather than guessing. ' +
+      'Keep transcript language as-is when quoting — do not translate.\n\n' +
       `Transcript:\n${input.transcriptText}`;
 
     const parsed = (await chatCompletionJson(
@@ -190,6 +221,11 @@ export class OpenAISummaryProvider implements SummaryProvider {
       keyLearningPoints: parsed.keyLearningPoints ?? [],
       importantQuestions: parsed.importantQuestions ?? [],
       actionItems: parsed.actionItems ?? [],
+      trainerDiscussion: parsed.trainerDiscussion ?? '',
+      studentParticipation: parsed.studentParticipation ?? '',
+      importantObservations: parsed.importantObservations ?? [],
+      followUpRequired: parsed.followUpRequired ?? [],
+      participantInsights: parsed.participantInsights ?? [],
     };
   }
 }

@@ -26,15 +26,34 @@ async function resolveProgrammeNames(ids: unknown[]): Promise<Map<string, string
   return map;
 }
 
-/** Doc 25 — growthPartners displayName lookup, same shape as resolveDisplayNames. */
+/**
+ * Doc 25 / TCGN — partner displayName lookup for the "Referred by" column.
+ * `partnerId` can belong to either `growthPartners` (individual) or
+ * `communityPartners` (business) — a single Firebase-style id space, two
+ * possible collections (ADR-014) — so this tries the individual collection
+ * first, then the business one, same order and shape as
+ * `findPartnerDocByAuthUid` in `lib/auth/partner-login-runtime.ts`. Before
+ * this fix, a TCGN-referred lead resolved to nothing here and fell back to
+ * showing the raw partner id instead of the business's name.
+ */
 async function resolvePartnerNames(ids: unknown[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids.filter((v): v is string => typeof v === 'string'))];
   const map = new Map<string, string>();
   await Promise.all(
     unique.map(async (id) => {
-      const snap = await adminDb().collection('growthPartners').doc(id).get();
-      const name = snap.get('displayName');
-      map.set(id, typeof name === 'string' ? name : id);
+      const gpSnap = await adminDb().collection('growthPartners').doc(id).get();
+      if (gpSnap.exists) {
+        const name = gpSnap.get('displayName');
+        map.set(id, typeof name === 'string' ? name : id);
+        return;
+      }
+      const cpSnap = await adminDb().collection('communityPartners').doc(id).get();
+      if (cpSnap.exists) {
+        const name = cpSnap.get('orgName');
+        map.set(id, typeof name === 'string' ? name : id);
+        return;
+      }
+      map.set(id, id);
     }),
   );
   return map;

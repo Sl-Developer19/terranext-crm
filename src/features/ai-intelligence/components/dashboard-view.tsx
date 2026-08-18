@@ -41,9 +41,30 @@ export function DashboardView({
           format="count"
         />
         <StatCard
-          label="Recording hours"
+          label="Total recording time"
+          value={`${Math.round((stats.recordingHours + stats.pausedHours) * 10) / 10}h`}
+          numericValue={stats.recordingHours + stats.pausedHours}
+          format="count"
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Active recording hours"
           value={`${stats.recordingHours}h`}
           numericValue={stats.recordingHours}
+          format="count"
+        />
+        <StatCard
+          label="Paused hours"
+          value={`${stats.pausedHours}h`}
+          numericValue={stats.pausedHours}
+          format="count"
+        />
+        <StatCard
+          label="Number of pauses"
+          value={String(stats.totalPauses)}
+          numericValue={stats.totalPauses}
           format="count"
         />
       </div>

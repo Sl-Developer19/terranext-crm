@@ -15,6 +15,7 @@ import {
   type DashboardStatsSessionInput,
   type PauseEventInput,
 } from './logic';
+import { CHANNEL_ROLES } from './schema';
 import type {
   AiAnalyticsDay,
   AiDashboardStats,
@@ -26,6 +27,8 @@ import type {
   AiSessionStatus,
   AiSummary,
   AiTranscript,
+  ChannelRole,
+  ChannelRoleMapping,
   ChunkStatus,
   PauseEvent,
   RecordingSourceKind,
@@ -156,6 +159,10 @@ function toSession(
     pausedDurationSeconds: asNumberOrNull(data.pausedDurationSeconds) ?? 0,
     pauseCount: asNumberOrNull(data.pauseCount) ?? 0,
     pauseHistory: toPauseHistory(data.pauseHistory).map(toPauseEventReadModel),
+    // Every session created before channel-preserving capture existed has
+    // no such field — 1 (single mixed stream) is the accurate value for
+    // every one of them, not just a fallback.
+    capturedChannelCount: asNumberOrNull(data.capturedChannelCount) ?? 1,
     processingJobId: asStringOrNull(data.processingJobId),
     transcriptId: asStringOrNull(data.transcriptId),
     summaryId: asStringOrNull(data.summaryId),
@@ -239,6 +246,7 @@ export async function createSessionRecord(
     pausedDurationSeconds: 0,
     pauseCount: 0,
     pauseHistory: [],
+    capturedChannelCount: 1,
     processingJobId: null,
     transcriptId: null,
     summaryId: null,
@@ -265,12 +273,21 @@ export async function findSessionMeta(
   };
 }
 
-function chunkDocRef(sessionId: string, chunkIndex: number) {
+/** `null` channelIndex (the single-mixed-stream case, every session today)
+ * keeps the exact doc ID scheme this always used — `String(chunkIndex)` —
+ * so nothing about an existing session's chunk documents changes. Only
+ * channel-preserving capture (multiple chunks legitimately sharing one
+ * `chunkIndex`, one per physical channel) ever produces the composite form. */
+function chunkDocId(chunkIndex: number, channelIndex: number | null): string {
+  return channelIndex === null ? String(chunkIndex) : `${chunkIndex}-${channelIndex}`;
+}
+
+function chunkDocRef(sessionId: string, chunkIndex: number, channelIndex: number | null = null) {
   return adminDb()
     .collection(SESSIONS_COLLECTION)
     .doc(sessionId)
     .collection(CHUNKS_SUBCOLLECTION)
-    .doc(String(chunkIndex));
+    .doc(chunkDocId(chunkIndex, channelIndex));
 }
 
 function toChunk(
@@ -289,15 +306,60 @@ function toChunk(
     durationSeconds: asNumberOrNull(data.durationSeconds),
     attempts: asNumberOrNull(data.attempts) ?? 0,
     error: asStringOrNull(data.error),
+    channelIndex: asNumberOrNull(data.channelIndex),
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt) || toIso(data.createdAt),
   };
 }
 
+export type StartRecordingOutcome = 'started' | 'already-recording' | 'invalid';
+
 /**
- * Marks the session `recording` and records when it started — called once,
- * for chunk 0 only. Later chunks reuse the same in-progress session without
- * touching this again.
+ * Atomically transitions a session `draft` -> `recording` the moment the
+ * trainer's MediaRecorder actually starts capturing — deliberately
+ * independent of chunk 0's upload, which may not complete for up to
+ * `CHUNK_DURATION_SECONDS`. Pause/Resume require the server-side session to
+ * already be `recording`, so that transition can no longer wait on the first
+ * chunk finishing.
+ *
+ * Idempotent: a retried call that finds the session already `recording`
+ * (e.g. a network retry of the same Start click whose first attempt actually
+ * landed) is treated as success rather than rejected — same retry tolerance
+ * `markSessionRecordingStarted` below already relies on. Any other status
+ * (`paused`, `processing`, `completed`, `failed`, or a missing doc) is
+ * `'invalid'`: Start was clicked on a session that was never a fresh draft.
+ */
+export async function markSessionRecordingStartedIfDraft(
+  sessionId: string,
+  actorUid: string,
+): Promise<StartRecordingOutcome> {
+  const ref = adminDb().collection(SESSIONS_COLLECTION).doc(sessionId);
+  return adminDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return 'invalid';
+    const status = snap.get('status') as AiSessionStatus;
+    if (status === 'recording') return 'already-recording';
+    if (status !== 'draft') return 'invalid';
+
+    tx.update(ref, {
+      status: 'recording' satisfies AiSessionStatus,
+      startedAt: FieldValue.serverTimestamp(),
+      updatedAt: new Date(),
+      updatedBy: actorUid,
+    });
+    return 'started';
+  });
+}
+
+/**
+ * Marks the session `recording` and records when it started. Now only a
+ * fallback for chunk 0's upload ticket ({@link markSessionRecordingStartedIfDraft}
+ * is the primary path, called from `startSessionRecording` at the moment
+ * recording begins): if a session somehow reaches chunk 0's ticket request
+ * while still `draft` — e.g. the client's `startSessionRecording` call was
+ * lost — this keeps the old behavior of flipping status here rather than
+ * rejecting the upload outright. Unconditional update, not transactional, so
+ * callers must already know the current status is `draft` before calling.
  */
 export async function markSessionRecordingStarted(
   sessionId: string,
@@ -374,7 +436,9 @@ export async function markSessionResumed(sessionId: string, actorUid: string): P
   });
 }
 
-/** Creates (or re-issues, on a retried upload) the chunk's storage path before the signed URL is minted. */
+/** Creates (or re-issues, on a retried upload) the chunk's storage path
+ * before the signed URL is minted. `channelIndex` is `null` for the
+ * single-mixed-stream case — every session today. */
 export async function reserveChunkUploadPath(
   sessionId: string,
   chunkIndex: number,
@@ -382,14 +446,16 @@ export async function reserveChunkUploadPath(
   sizeBytes: number,
   startOffsetSec: number,
   actorUid: string,
+  channelIndex: number | null = null,
 ): Promise<string> {
-  const storagePath = sessionChunkStoragePath(sessionId, chunkIndex, contentType);
+  const storagePath = sessionChunkStoragePath(sessionId, chunkIndex, contentType, channelIndex);
   const now = new Date();
-  await chunkDocRef(sessionId, chunkIndex).set(
+  await chunkDocRef(sessionId, chunkIndex, channelIndex).set(
     {
       schemaVersion: 1,
       sessionId,
       chunkIndex,
+      channelIndex,
       status: 'uploading' satisfies ChunkStatus,
       storagePath,
       contentType,
@@ -410,13 +476,14 @@ export async function reserveChunkUploadPath(
 export async function findChunkMeta(
   sessionId: string,
   chunkIndex: number,
+  channelIndex: number | null = null,
 ): Promise<{
   status: ChunkStatus;
   storagePath: string | null;
   contentType: string | null;
   expectedSizeBytes: number | null;
 } | null> {
-  const snap = await chunkDocRef(sessionId, chunkIndex).get();
+  const snap = await chunkDocRef(sessionId, chunkIndex, channelIndex).get();
   if (!snap.exists) return null;
   return {
     status: (asString(snap.get('status')) || 'uploading') as ChunkStatus,
@@ -431,8 +498,9 @@ export async function markChunkUploaded(
   chunkIndex: number,
   durationSeconds: number,
   actorUid: string,
+  channelIndex: number | null = null,
 ): Promise<void> {
-  await chunkDocRef(sessionId, chunkIndex).update({
+  await chunkDocRef(sessionId, chunkIndex, channelIndex).update({
     status: 'uploaded' satisfies ChunkStatus,
     durationSeconds,
     updatedAt: new Date(),
@@ -444,8 +512,9 @@ export async function markChunkUploadFailed(
   sessionId: string,
   chunkIndex: number,
   actorUid: string,
+  channelIndex: number | null = null,
 ): Promise<void> {
-  await chunkDocRef(sessionId, chunkIndex).update({
+  await chunkDocRef(sessionId, chunkIndex, channelIndex).update({
     status: 'failed' satisfies ChunkStatus,
     updatedAt: new Date(),
     updatedBy: actorUid,
@@ -476,6 +545,7 @@ export async function finalizeSessionAndEnqueue(
   totalChunks: number,
   totalDurationSeconds: number,
   actorUid: string,
+  capturedChannelCount: number = 1,
 ): Promise<string> {
   const db = adminDb();
   const sessionRef = db.collection(SESSIONS_COLLECTION).doc(sessionId);
@@ -491,6 +561,7 @@ export async function finalizeSessionAndEnqueue(
     tx.update(sessionRef, {
       status: 'processing' satisfies AiSessionStatus,
       totalChunks,
+      capturedChannelCount,
       durationSeconds: totalDurationSeconds,
       pauseHistory: closed,
       pauseCount: closed.length,
@@ -546,6 +617,7 @@ function toJob(
     chunksTotal: asNumberOrNull(data.chunksTotal),
     attempts: asNumberOrNull(data.attempts) ?? 0,
     error: asStringOrNull(data.error),
+    failedAtStage: asStringOrNull(data.failedAtStage) as AiJobStage | null,
     speechProvider: asStringOrNull(data.speechProvider),
     summaryProvider: asStringOrNull(data.summaryProvider),
     createdAt: toIso(data.createdAt),
@@ -583,6 +655,7 @@ export async function retryProcessingJobRecord(jobId: string): Promise<boolean> 
     tx.update(ref, {
       stage: 'queued' satisfies AiJobStage,
       error: null,
+      failedAtStage: null,
       attempts: FieldValue.increment(1),
       updatedAt: new Date(),
     });
@@ -590,11 +663,34 @@ export async function retryProcessingJobRecord(jobId: string): Promise<boolean> 
   });
 }
 
+const SPEAKER_ROLE_VALUES = new Set(['trainer', 'student', 'unknown']);
+
+/** Defensive read, not a raw cast: a transcript written before
+ * `attributionSource`/`channelIndex` existed has neither field, and must
+ * read back as `'heuristic'`/`null` — the honest default — rather than
+ * `undefined` leaking into UI code that assumes the enum is always set. */
+function toTranscriptSegment(raw: unknown): TranscriptSegment {
+  const obj = (raw ?? {}) as Record<string, unknown>;
+  const speaker = asString(obj.speaker);
+  const attributionSource = asString(obj.attributionSource);
+  return {
+    speaker: (SPEAKER_ROLE_VALUES.has(speaker)
+      ? speaker
+      : 'unknown') as TranscriptSegment['speaker'],
+    speakerLabel: asString(obj.speakerLabel) || 'Unknown speaker',
+    text: asString(obj.text),
+    startSec: asNumberOrNull(obj.startSec) ?? 0,
+    endSec: asNumberOrNull(obj.endSec) ?? 0,
+    attributionSource: attributionSource === 'channel' ? 'channel' : 'heuristic',
+    channelIndex: asNumberOrNull(obj.channelIndex),
+  };
+}
+
 export async function findTranscriptBySessionId(sessionId: string): Promise<AiTranscript | null> {
   const snap = await adminDb().collection(TRANSCRIPTS_COLLECTION).doc(sessionId).get();
   if (!snap.exists) return null;
   const data = snap.data() ?? {};
-  const segments = Array.isArray(data.segments) ? (data.segments as TranscriptSegment[]) : [];
+  const segments = Array.isArray(data.segments) ? data.segments.map(toTranscriptSegment) : [];
   return {
     id: snap.id,
     sessionId: asString(data.sessionId),
@@ -618,6 +714,14 @@ export async function findSummaryBySessionId(sessionId: string): Promise<AiSumma
     keyLearningPoints: asStringArray(data.keyLearningPoints),
     importantQuestions: asStringArray(data.importantQuestions),
     actionItems: asStringArray(data.actionItems),
+    // Added in schemaVersion 2 — a summary written before this change has
+    // none of these fields; the empty-string/array defaults below are what
+    // makes that a correct "not extracted" read rather than a crash.
+    trainerDiscussion: asString(data.trainerDiscussion),
+    studentParticipation: asString(data.studentParticipation),
+    importantObservations: asStringArray(data.importantObservations),
+    followUpRequired: asStringArray(data.followUpRequired),
+    participantInsights: asStringArray(data.participantInsights),
     createdAt: toIso(data.createdAt),
   };
 }
@@ -684,11 +788,31 @@ const DEFAULT_SETTINGS: AiIntelligenceSettings = {
   notifyTrainerOnCompletion: true,
   audioRetentionDays: 365,
   defaultRecordingSource: 'laptop_microphone',
+  channelRoleMap: [],
   activeSpeechProvider: 'mock',
   activeSummaryProvider: 'mock',
   updatedAt: '',
   updatedBy: '',
 };
+
+function toChannelRoleMap(raw: unknown): ChannelRoleMapping[] {
+  if (!Array.isArray(raw)) return [];
+  const roles = new Set<string>(CHANNEL_ROLES);
+  const result: ChannelRoleMapping[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as Record<string, unknown>;
+    const channelIndex = asNumberOrNull(row.channelIndex);
+    const role = asString(row.role);
+    if (channelIndex === null || !roles.has(role)) continue;
+    result.push({
+      channelIndex,
+      role: role as ChannelRole,
+      label: asString(row.label) || role,
+    });
+  }
+  return result;
+}
 
 export async function findAiSettings(): Promise<AiIntelligenceSettings> {
   const snap = await adminDb().doc(SETTINGS_DOC_PATH).get();
@@ -702,6 +826,7 @@ export async function findAiSettings(): Promise<AiIntelligenceSettings> {
     defaultRecordingSource: isRecordingSourceKind(storedSource)
       ? storedSource
       : 'laptop_microphone',
+    channelRoleMap: toChannelRoleMap(data.channelRoleMap),
     activeSpeechProvider: asString(data.activeSpeechProvider) || 'mock',
     activeSummaryProvider: asString(data.activeSummaryProvider) || 'mock',
     updatedAt: toIso(data.updatedAt),
@@ -715,16 +840,18 @@ export async function saveAiSettings(
     notifyTrainerOnCompletion: boolean;
     audioRetentionDays: number;
     defaultRecordingSource: RecordingSourceKind;
+    channelRoleMap: ChannelRoleMapping[];
   },
   actorUid: string,
 ): Promise<void> {
   await adminDb().doc(SETTINGS_DOC_PATH).set(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       autoClassifySpeakers: input.autoClassifySpeakers,
       notifyTrainerOnCompletion: input.notifyTrainerOnCompletion,
       audioRetentionDays: input.audioRetentionDays,
       defaultRecordingSource: input.defaultRecordingSource,
+      channelRoleMap: input.channelRoleMap,
       updatedAt: new Date(),
       updatedBy: actorUid,
     },

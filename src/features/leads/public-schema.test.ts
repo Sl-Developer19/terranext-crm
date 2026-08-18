@@ -20,6 +20,13 @@ describe('createPublicLeadSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts the contact form submission (formType: contact)', () => {
+    const result = createPublicLeadSchema.safeParse(
+      valid({ formType: 'contact', leadType: 'other', message: 'Subject: Partnership enquiry' }),
+    );
+    expect(result.success).toBe(true);
+  });
+
   it('defaults email and programme interest to null rather than undefined', () => {
     const result = createPublicLeadSchema.parse({
       formType: 'general',
@@ -87,6 +94,27 @@ describe('createPublicLeadSchema', () => {
   it('enforces the name and message length bounds', () => {
     expect(createPublicLeadSchema.safeParse(valid({ name: 'A' })).success).toBe(false);
     expect(createPublicLeadSchema.safeParse(valid({ message: 'x'.repeat(1001) })).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts an optional TCGN referral code, and accepts its absence', () => {
+    expect(createPublicLeadSchema.safeParse(valid({ referralCode: 'TCGN-000001' })).success).toBe(
+      true,
+    );
+    expect(createPublicLeadSchema.safeParse(valid()).success).toBe(true);
+  });
+
+  it('does not reject an unresolvable-looking referral code at the schema level', () => {
+    // Resolution (valid vs unknown vs inactive) happens at write time, not
+    // here — Invalid QR Handling must never look like a validation error.
+    expect(
+      createPublicLeadSchema.safeParse(valid({ referralCode: 'not-a-real-code' })).success,
+    ).toBe(true);
+  });
+
+  it('enforces the referral code length bound', () => {
+    expect(createPublicLeadSchema.safeParse(valid({ referralCode: 'x'.repeat(41) })).success).toBe(
       false,
     );
   });

@@ -1,4 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import bundleAnalyzer from '@next/bundle-analyzer';
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -33,10 +38,15 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com",
+  `img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com${isDev ? ' http://127.0.0.1:9199' : ''}`,
   "font-src 'self' data:",
   // Firebase Auth/Firestore/Storage endpoints the browser SDK talks to.
-  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://firebase.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
+  // Dev-only: the emulator ports (Auth 9099, Firestore 8080, Storage 9199)
+  // so client-side Firebase SDK calls (e.g. the certificate artwork's
+  // direct-to-Storage upload) aren't silently CSP-blocked when running
+  // against `NEXT_PUBLIC_USE_EMULATORS=true` — production only ever talks
+  // to the real *.googleapis.com hosts already listed below.
+  `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://firebase.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com${isDev ? ' http://127.0.0.1:9099 http://127.0.0.1:8080 http://127.0.0.1:9199' : ''}`,
   "frame-src 'self' https://*.firebaseapp.com",
   "object-src 'none'",
   "base-uri 'self'",
@@ -75,6 +85,13 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // A stray lockfile one level up (`D:\terranext_website\package-lock.json`,
+  // outside this app — the monorepo-looking parent also holds sibling
+  // `terranext`/`portfolio` projects) makes Next.js misinfer the workspace
+  // root as that parent, widening the dev file-tracing/watch scope to
+  // everything under it. Pinning explicitly avoids depending on those
+  // unrelated sibling directories' state.
+  outputFileTracingRoot: projectRoot,
   eslint: {
     dirs: ['src'],
   },
@@ -89,6 +106,21 @@ const nextConfig = {
     // lucide-react is imported piecemeal across nearly every table/component;
     // this lets Next tree-shake it per-icon instead of pulling the barrel.
     optimizePackageImports: ['lucide-react'],
+  },
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // The Firebase Local Emulator Suite (run from this same directory for
+      // `crm-dev-emulator`) writes *-debug.log continuously to the project
+      // root. Webpack's dev watcher isn't scoped by .gitignore, so without
+      // this it treats every emulator log write as a source change and
+      // fires an unnecessary Fast Refresh rebuild on nearly every
+      // Firestore/Auth/Storage call — i.e. on every form submission.
+      const ignored = Array.isArray(config.watchOptions?.ignored)
+        ? config.watchOptions.ignored
+        : [];
+      config.watchOptions = { ...config.watchOptions, ignored: [...ignored, '**/*-debug.log'] };
+    }
+    return config;
   },
   async headers() {
     return [

@@ -3,6 +3,7 @@ import 'server-only';
 import { Timestamp } from 'firebase-admin/firestore';
 
 import { reserveParticipantId } from '@/features/participants/repository';
+import { getIdFormats } from '@/features/settings';
 import { adminDb } from '@/lib/firebase/admin';
 
 import type { DuplicateMatch } from './schema';
@@ -33,6 +34,7 @@ export interface QueueLead {
 export async function findQueueLeads(stages: readonly string[]): Promise<QueueLead[]> {
   const snap = await adminDb()
     .collection('leads')
+    .where('deletedAt', '==', null)
     .where('stage', 'in', [...stages])
     .limit(500)
     .get();
@@ -51,7 +53,7 @@ export async function findQueueLeads(stages: readonly string[]): Promise<QueueLe
 
 export async function findLeadForConversion(leadId: string): Promise<QueueLead | null> {
   const doc = await adminDb().collection('leads').doc(leadId).get();
-  if (!doc.exists) return null;
+  if (!doc.exists || doc.get('deletedAt') !== null) return null;
   return {
     id: doc.id,
     name: asString(doc.get('name')),
@@ -144,11 +146,15 @@ function searchTokens(fullName: string, phone: string): string[] {
 export async function convertLeadRecord(record: ConvertLeadRecord): Promise<ConvertOutcome> {
   const db = adminDb();
   const now = new Date();
+  // Settings is slow-changing config, read once outside the transaction —
+  // same reasoning as the Growth/Community Partner ID reservations.
+  const idFormats = await getIdFormats();
 
   return db.runTransaction(async (tx) => {
     const leadRef = db.collection('leads').doc(record.leadId);
     const leadSnap = await tx.get(leadRef);
     if (!leadSnap.exists) throw new Error('lead_missing');
+    if (leadSnap.get('deletedAt') !== null) throw new Error('lead_missing');
 
     // Re-read inside the transaction: two operators on the same lead must not
     // both mint an ID. The first commit wins; the second sees the back-link.
@@ -158,7 +164,11 @@ export async function convertLeadRecord(record: ConvertLeadRecord): Promise<Conv
     // downstream record — the reward engine (slice 4) reads it from here.
     const partnerId = asStringOrNull(leadSnap.get('partnerId'));
 
-    const participantId = await reserveParticipantId(tx, now.getFullYear());
+    const participantId = await reserveParticipantId(
+      tx,
+      now.getFullYear(),
+      idFormats.participantPrefix,
+    );
     const participantRef = db.collection('participants').doc(participantId);
     const enrolmentRef = participantRef.collection('enrolments').doc();
 

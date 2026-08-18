@@ -23,6 +23,9 @@ function session(overrides: Partial<CounsellingSession> = {}): CounsellingSessio
     recommendation: { programmeId: 'p1', programmeName: 'Programme One', remarks: null },
     outcome: 'recommended',
     createdAt: '2026-07-01T10:00:00.000Z',
+    createdBy: 'u1',
+    updatedAt: '2026-07-01T10:00:00.000Z',
+    updatedBy: 'u1',
     ...overrides,
   };
 }

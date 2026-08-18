@@ -37,10 +37,42 @@ function unavailable(key: MetricKey, label: string, reason: string): Metric {
   return { state: 'unavailable', key, label, format: 'count', reason };
 }
 
+/** Doc 11 §8 SCAN_CAP note, shared by every capped-scan metric below. */
+const SCAN_CAP_CAVEAT =
+  'Based on a bounded scan of the first 1,000 matching records — the true figure may be higher once that cap is reached.';
+
+/**
+ * `ok`, unless the source scan hit Doc 11 §8's SCAN_CAP, in which case the
+ * value is a floor, not a fact — rendered `partial` with an explicit caveat
+ * instead of silently understating the real number.
+ */
+function cappedOk(
+  key: MetricKey,
+  label: string,
+  value: number,
+  format: Metric extends { format: infer F } ? F : never,
+  capped: boolean,
+  detail?: string,
+): Metric {
+  if (!capped) return ok(key, label, value, format, detail);
+  return {
+    state: 'partial',
+    key,
+    label,
+    value,
+    format,
+    caveat: detail ? `${detail}. ${SCAN_CAP_CAVEAT}` : SCAN_CAP_CAVEAT,
+  };
+}
+
 /**
  * A rate metric: `ok` when there is a population to measure, `unavailable`
  * when there is not. This is the distinction that keeps an empty CRM from
  * reporting 0% completion and 0% conversion as if they were outcomes.
+ *
+ * `capped` marks that the numerator (or denominator) came from a
+ * SCAN_CAP-bounded scan (Doc 11 §8) — the rate then renders `partial`
+ * rather than `ok`, since it may understate the true population.
  */
 function rateMetric(
   key: MetricKey,
@@ -49,9 +81,20 @@ function rateMetric(
   denominator: number,
   emptyReason: string,
   detail?: string,
+  capped = false,
 ): Metric {
   const value = rate(numerator, denominator);
   if (value === null) return unavailable(key, label, emptyReason);
+  if (capped) {
+    return {
+      state: 'partial',
+      key,
+      label,
+      value,
+      format: 'percent',
+      caveat: detail ? `${detail}. ${SCAN_CAP_CAVEAT}` : SCAN_CAP_CAVEAT,
+    };
+  }
   return { state: 'ok', key, label, value, format: 'percent', ...(detail ? { detail } : {}) };
 }
 
@@ -105,11 +148,12 @@ export function academicSection(counts: DashboardCounts): DashboardSection {
       ok('totalActiveParticipants', 'Active participants', counts.participantsActive, 'count'),
       ok('activeBatches', 'Active batches', counts.batchesActive, 'count'),
       counts.attendanceSampleSize > 0
-        ? ok(
+        ? cappedOk(
             'attendancePercentage',
             'Attendance',
             counts.attendancePctMean,
             'percent',
+            counts.scanCapped.attendance,
             `mean across ${counts.attendanceSampleSize} enrolment${counts.attendanceSampleSize === 1 ? '' : 's'} with marks`,
           )
         : unavailable('attendancePercentage', 'Attendance', 'No attendance has been marked yet.'),
@@ -120,6 +164,7 @@ export function academicSection(counts: DashboardCounts): DashboardSection {
         counts.assessmentsTotal,
         'No assessments created yet.',
         `${counts.assessmentsScored} of ${counts.assessmentsTotal} assessments scored`,
+        counts.scanCapped.assessments,
       ),
       rateMetric(
         'programmeCompletionRate',
@@ -136,6 +181,7 @@ export function academicSection(counts: DashboardCounts): DashboardSection {
         counts.trainersTotal,
         'No trainers provisioned yet.',
         `${counts.trainersAssigned} of ${counts.trainersTotal} trainers assigned to a live batch`,
+        counts.scanCapped.trainers,
       ),
     ],
   };
@@ -181,33 +227,80 @@ export function financeSection(counts: DashboardCounts): DashboardSection {
     title: 'Finance',
     description: 'Collections against what has been billed (SOP 18.9 Finance Dashboard).',
     metrics: [
-      ok('revenueSummary', 'Revenue collected', counts.revenuePaisePaid, 'currency'),
-      ok('outstandingFees', 'Outstanding fees', counts.revenuePaiseOutstanding, 'currency'),
+      cappedOk(
+        'revenueSummary',
+        'Revenue collected',
+        counts.revenuePaisePaid,
+        'currency',
+        counts.scanCapped.revenue,
+      ),
+      cappedOk(
+        'outstandingFees',
+        'Outstanding fees',
+        counts.revenuePaiseOutstanding,
+        'currency',
+        counts.scanCapped.revenue,
+      ),
       rateMetric(
         'revenueSummary',
         'Collection rate',
         counts.revenuePaisePaid,
         counts.revenuePaisePaid + counts.revenuePaiseOutstanding,
         'No fee accounts opened yet.',
+        undefined,
+        counts.scanCapped.revenue,
       ),
     ],
   };
 }
 
-export function growthPartnersSection(counts: DashboardCounts): DashboardSection {
+/**
+ * Partner Network section (Feature 9; formerly titled "Growth Partners") —
+ * covers both individual Growth Partners and TCGN Community Partners under
+ * one roof, per the approved architecture (shared referral/reward engine,
+ * separate identity collections). The original `gp*` metrics are untouched
+ * — they were already generic across both partner kinds (Feature 9
+ * architecture review) — this only adds the tiles that were genuinely
+ * missing: partner counts by kind + combined, qualified/converted referral
+ * counts, and total wallet balance.
+ */
+export function partnerNetworkSection(counts: DashboardCounts): DashboardSection {
   return {
-    title: 'Growth Partners',
-    description: 'Referral network reach, conversion, and reward accounting (Doc 25 §6).',
+    title: 'Partner Network',
+    description: 'Referral network reach, conversion, and reward accounting (Doc 25 §6; TCGN).',
     metrics: [
+      ok(
+        'combinedTotalPartners',
+        'Total partners',
+        counts.gpTotalPartners + counts.cpTotalPartners,
+        'count',
+        `${counts.gpTotalPartners} Growth + ${counts.cpTotalPartners} Community`,
+      ),
       ok('gpTotalPartners', 'Growth Partners', counts.gpTotalPartners, 'count'),
       ok(
         'gpActivePartners',
-        'Active partners',
+        'Active Growth Partners',
         counts.gpActivePartners,
         'count',
         `of ${counts.gpTotalPartners} total`,
       ),
+      ok('cpTotalPartners', 'Community Partners', counts.cpTotalPartners, 'count'),
+      ok(
+        'cpActivePartners',
+        'Active Community Partners',
+        counts.cpActivePartners,
+        'count',
+        `of ${counts.cpTotalPartners} total`,
+      ),
       ok('gpTotalReferrals', 'Referrals', counts.gpTotalReferrals, 'count'),
+      ok(
+        'qualifiedReferrals',
+        'Qualified referrals',
+        counts.qualifiedReferrals,
+        'count',
+        'Reached counselling, hot, or admitted',
+      ),
+      ok('convertedReferrals', 'Converted referrals', counts.gpAdmittedReferrals, 'count'),
       rateMetric(
         'gpReferralConversionRate',
         'Referral conversion',
@@ -215,14 +308,34 @@ export function growthPartnersSection(counts: DashboardCounts): DashboardSection
         counts.gpTotalReferrals,
         'No referrals recorded yet.',
       ),
-      ok(
+      cappedOk(
         'gpRewardsGenerated',
         'Rewards generated',
         counts.gpRewardsAccruedPaise + counts.gpRewardsPaidPaise,
         'currency',
+        counts.scanCapped.gpRewards,
       ),
-      ok('gpRewardsPaid', 'Rewards paid', counts.gpRewardsPaidPaise, 'currency'),
-      ok('gpPendingRewards', 'Pending rewards', counts.gpRewardsAccruedPaise, 'currency'),
+      cappedOk(
+        'gpRewardsPaid',
+        'Rewards paid',
+        counts.gpRewardsPaidPaise,
+        'currency',
+        counts.scanCapped.gpRewards,
+      ),
+      cappedOk(
+        'gpPendingRewards',
+        'Pending rewards',
+        counts.gpRewardsAccruedPaise,
+        'currency',
+        counts.scanCapped.gpRewards,
+      ),
+      cappedOk(
+        'walletBalance',
+        'Wallet balance',
+        counts.walletBalancePaise,
+        'currency',
+        counts.scanCapped.walletBalance,
+      ),
     ],
   };
 }
@@ -243,26 +356,26 @@ export function sectionsForRole(role: StaffRole, counts: DashboardCounts): Dashb
         academicSection(counts),
         outcomesSection(counts),
         financeSection(counts),
-        growthPartnersSection(counts),
+        partnerNetworkSection(counts),
       ];
     case 'ops_manager':
       return [
         acquisitionSection(counts),
         academicSection(counts),
         outcomesSection(counts),
-        growthPartnersSection(counts),
+        partnerNetworkSection(counts),
       ];
     case 'system_admin':
       // Platform administration, not business performance — Growth Partner
       // onboarding oversight is the one business-shaped exception it owns.
-      return [academicSection(counts), growthPartnersSection(counts)];
+      return [academicSection(counts), partnerNetworkSection(counts)];
     case 'consultant':
       return [acquisitionSection(counts)];
     case 'coordinator':
     case 'trainer':
       return [academicSection(counts)];
     case 'finance':
-      return [financeSection(counts), growthPartnersSection(counts)];
+      return [financeSection(counts), partnerNetworkSection(counts)];
     case 'placement':
       return [outcomesSection(counts)];
   }

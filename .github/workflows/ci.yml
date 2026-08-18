@@ -44,6 +44,50 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Firestore rules emulator tests join this pipeline when the first
-  # client-accessible collection block lands (C-1 gate, Doc 22 M1).
+  rules:
+    name: Firestore rules emulator deny-tests (Doc 18)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rules emulator tests
+        run: npm run test:rules
+
+  perf:
+    name: Lighthouse (public shell) · Doc 11 §8
+    runs-on: ubuntu-latest
+    # Per-release cadence (Doc 11 §8), not every PR — Lighthouse timing is
+    # too noisy on shared runners to gate merges; this job reports on main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Lighthouse CI (login, partner/login — the only unauthenticated routes)
+        run: npm run perf:lighthouse
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-reports
+          path: .lighthouseci/
+          retention-days: 30

@@ -16,10 +16,21 @@ import { AUTH_SECURITY } from '@/config/auth-security';
 export const PARTNER_SESSION_COOKIE_NAME = AUTH_SECURITY.partnerSessionCookie.name;
 export const PARTNER_SESSION_DURATION_MS = AUTH_SECURITY.partnerSessionCookie.maxAgeMs;
 
+/**
+ * Which identity collection `partnerId` belongs to (TCGN) — `actorType`
+ * stays a single value (`growth_partner`) for every external-partner kind
+ * forever (ADR-014); this is the one field that tells callers which
+ * collection to query. Defaults to `'individual'` for every session minted
+ * before this field existed — no claim migration required, no forced
+ * re-login for existing Growth Partners.
+ */
+export type PartnerType = 'individual' | 'community_business';
+
 export interface PartnerSession {
   uid: string;
   email: string | null;
   partnerId: string;
+  partnerType: PartnerType;
   status: 'active' | 'suspended';
 }
 
@@ -43,12 +54,17 @@ export const getPartnerSession = cache(async (): Promise<PartnerSession | null> 
     // A suspended partner's token still verifies (revocation only kills
     // sessions minted *before* the suspension); this refuses it anyway so a
     // still-valid cookie issued moments before suspension can't slip through.
+    // Blocks rejected/suspended Community Partners exactly the same way it
+    // already blocks suspended Growth Partners — no kind-specific branch.
     if (status !== 'active') return null;
+    const partnerType: PartnerType =
+      decoded.partnerType === 'community_business' ? 'community_business' : 'individual';
 
     return {
       uid: decoded.uid,
       email: decoded.email ?? null,
       partnerId,
+      partnerType,
       status,
     };
   } catch {

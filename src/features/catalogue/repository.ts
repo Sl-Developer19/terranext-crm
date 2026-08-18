@@ -4,7 +4,14 @@ import type { DocumentSnapshot, QueryDocumentSnapshot } from 'firebase-admin/fir
 
 import { adminDb } from '@/lib/firebase/admin';
 
-import type { Academy, CatalogueStatus, Installment, Programme, ProgrammeOption } from './schema';
+import type {
+  Academy,
+  CatalogueStatus,
+  Installment,
+  IntakeStatus,
+  Programme,
+  ProgrammeOption,
+} from './schema';
 
 /** Catalogue data access (Doc 03 §1.2). Actions own permission + audit. */
 
@@ -23,6 +30,21 @@ function asNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function asNumberOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function asBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+const INTAKE_STATUS_VALUES = new Set<IntakeStatus>(['open', 'closed', 'waitlist']);
+function asIntakeStatus(value: unknown): IntakeStatus {
+  return typeof value === 'string' && INTAKE_STATUS_VALUES.has(value as IntakeStatus)
+    ? (value as IntakeStatus)
+    : 'open';
+}
+
 function toInstallments(value: unknown): Installment[] {
   if (!Array.isArray(value)) return [];
   return value.map((raw) => {
@@ -33,6 +55,21 @@ function toInstallments(value: unknown): Installment[] {
       dueOffsetDays: asNumber(entry.dueOffsetDays),
     };
   });
+}
+
+function toAcademy(doc: DocumentSnapshot | QueryDocumentSnapshot, programmeCount: number): Academy {
+  const data = doc.data() ?? {};
+  return {
+    id: doc.id,
+    name: asString(data.name),
+    slug: asString(data.slug),
+    description: asStringOrNull(data.description),
+    status: (data.status as CatalogueStatus) ?? 'active',
+    programmeCount,
+    displayOrder: asNumber(data.displayOrder),
+    icon: asStringOrNull(data.icon),
+    themeColor: asStringOrNull(data.themeColor),
+  };
 }
 
 function toProgramme(
@@ -52,6 +89,10 @@ function toProgramme(
     sessionCount: asNumber(data.sessionCount),
     eligibility: asStringOrNull(data.eligibility),
     curriculumSummary: asStringOrNull(data.curriculumSummary),
+    // Existing records predate this field — default true so already-issued
+    // certificate behaviour for pre-existing programmes doesn't silently
+    // change underneath them.
+    certificateEnabled: asBoolean(data.certificateEnabled, true),
     certificateRules: {
       minAttendancePct: asNumber(rules.minAttendancePct),
       minAssessmentScore: asNumber(rules.minAssessmentScore),
@@ -60,6 +101,9 @@ function toProgramme(
       totalPaise: asNumber(plan.totalPaise),
       installments: toInstallments(plan.installments),
     },
+    currency: asString(data.currency) || 'INR',
+    intakeStatus: asIntakeStatus(data.intakeStatus),
+    capacity: asNumberOrNull(data.capacity),
     status: (data.status as CatalogueStatus) ?? 'active',
   };
 }
@@ -79,17 +123,9 @@ export async function findAcademies(): Promise<Academy[]> {
     counts.set(academyId, (counts.get(academyId) ?? 0) + 1);
   }
 
-  return academies.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: asString(data.name),
-      slug: asString(data.slug),
-      description: asStringOrNull(data.description),
-      status: (data.status as CatalogueStatus) ?? 'active',
-      programmeCount: counts.get(doc.id) ?? 0,
-    };
-  });
+  return academies.docs
+    .map((doc) => toAcademy(doc, counts.get(doc.id) ?? 0))
+    .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
 }
 
 export async function findProgrammes(): Promise<Programme[]> {
@@ -146,19 +182,11 @@ export async function findProgrammeById(programmeId: string): Promise<Programme 
 export async function findAcademyById(academyId: string): Promise<Academy | null> {
   const snap = await adminDb().collection('academies').doc(academyId).get();
   if (!snap.exists) return null;
-  const data = snap.data() ?? {};
   const programmes = await adminDb()
     .collection('programmes')
     .where('academyId', '==', academyId)
     .get();
-  return {
-    id: snap.id,
-    name: asString(data.name),
-    slug: asString(data.slug),
-    description: asStringOrNull(data.description),
-    status: (data.status as CatalogueStatus) ?? 'active',
-    programmeCount: programmes.size,
-  };
+  return toAcademy(snap, programmes.size);
 }
 
 export async function isSlugTaken(slug: string, exceptId?: string): Promise<boolean> {
@@ -177,6 +205,9 @@ export interface AcademyWriteModel {
   name: string;
   slug: string;
   description?: string | undefined;
+  displayOrder: number;
+  icon?: string | undefined;
+  themeColor?: string | undefined;
 }
 
 export async function createAcademyRecord(
@@ -192,6 +223,9 @@ export async function createAcademyRecord(
     name: input.name,
     slug: input.slug,
     description: input.description ?? null,
+    displayOrder: input.displayOrder,
+    icon: input.icon ?? null,
+    themeColor: input.themeColor ?? null,
     status: 'active',
     createdAt: now,
     createdBy: actorUid,
@@ -215,6 +249,9 @@ export async function updateAcademyRecord(
       name: input.name,
       slug: input.slug,
       description: input.description ?? null,
+      displayOrder: input.displayOrder,
+      icon: input.icon ?? null,
+      themeColor: input.themeColor ?? null,
       updatedAt: new Date(),
       updatedBy: actorUid,
     });
@@ -230,7 +267,11 @@ export interface ProgrammeWriteModel {
   curriculumSummary?: string | undefined;
   minAttendancePct: number;
   minAssessmentScore: number;
+  certificateEnabled: boolean;
   totalFeePaise: number;
+  currency: string;
+  intakeStatus: IntakeStatus;
+  capacity?: number | undefined;
   installments: Installment[];
 }
 
@@ -243,6 +284,7 @@ function programmeFields(input: ProgrammeWriteModel) {
     sessionCount: input.sessionCount,
     eligibility: input.eligibility ?? null,
     curriculumSummary: input.curriculumSummary ?? null,
+    certificateEnabled: input.certificateEnabled,
     // BR-03 gate, per programme — the reason certificate eligibility is
     // configuration rather than a constant in code.
     certificateRules: {
@@ -253,6 +295,9 @@ function programmeFields(input: ProgrammeWriteModel) {
       totalPaise: input.totalFeePaise,
       installments: input.installments,
     },
+    currency: input.currency,
+    intakeStatus: input.intakeStatus,
+    capacity: input.capacity ?? null,
   };
 }
 

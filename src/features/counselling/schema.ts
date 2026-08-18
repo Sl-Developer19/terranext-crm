@@ -66,6 +66,40 @@ export const recordSessionSchema = z
   });
 export type RecordSessionInput = z.infer<typeof recordSessionSchema>;
 
+/**
+ * Editing an existing session (Edit button, Held Sessions table). Same shape
+ * and same BR-02 shape rule as `recordSessionSchema`, minus `leadId` —
+ * reassigning which lead a session belongs to is out of scope; only the
+ * session's own details (outcome, recommendation, notes, mode, timing) are
+ * editable. `sessionId` identifies which record to update in place.
+ */
+export const updateSessionSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    heldAt: z.string().min(1, 'When was the session held?'),
+    mode: z.enum(SESSION_MODES),
+    outcome: z.enum(SESSION_OUTCOMES),
+    notes: z
+      .string()
+      .trim()
+      .min(10, 'Record what was discussed (at least 10 characters)')
+      .max(4000),
+    needsAssessment: optionalText(2000),
+    recommendedProgrammeId: optionalText(120),
+    recommendationRemarks: optionalText(2000),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.outcome === 'recommended' && !value.recommendedProgrammeId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['recommendedProgrammeId'],
+        message: 'A recommended outcome must name the programme being recommended (BR-02)',
+      });
+    }
+  });
+export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
+
 /* ── Read models ───────────────────────────────────────────────────────── */
 
 export interface CounsellingSession {
@@ -81,6 +115,9 @@ export interface CounsellingSession {
   recommendation: { programmeId: string; programmeName: string; remarks: string | null } | null;
   outcome: SessionOutcome;
   createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 export interface CounsellingLeadOption {

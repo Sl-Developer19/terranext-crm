@@ -30,7 +30,7 @@ export function PartnerShell({
   const pathname = usePathname();
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-gold focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground focus:shadow-premium-lg"
@@ -85,7 +85,7 @@ export function PartnerShell({
           </div>
         </div>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="glass sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
           <span className="text-sm font-medium text-foreground md:hidden">{siteConfig.name}</span>
           <div className="ml-auto flex items-center gap-3">

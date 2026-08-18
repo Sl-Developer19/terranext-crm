@@ -19,7 +19,15 @@ export class MockSpeechProvider implements SpeechProvider {
       fullText: text,
       language: 'en',
       segments: [
-        { speaker: 'unknown', speakerLabel: 'Unconfigured', text, startSec: 0, endSec: 0 },
+        {
+          speaker: 'unknown',
+          speakerLabel: 'Unconfigured',
+          text,
+          startSec: 0,
+          endSec: 0,
+          attributionSource: 'heuristic',
+          channelIndex: null,
+        },
       ],
     };
   }
@@ -36,6 +44,11 @@ export class MockSummaryProvider implements SummaryProvider {
       keyLearningPoints: [],
       importantQuestions: [],
       actionItems: [],
+      trainerDiscussion: '',
+      studentParticipation: '',
+      importantObservations: [],
+      followUpRequired: [],
+      participantInsights: [],
     };
   }
 }

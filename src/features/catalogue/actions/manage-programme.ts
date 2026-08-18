@@ -119,6 +119,18 @@ export async function updateProgramme(input: UpdateProgrammeInput): Promise<Resu
         after: fields.totalFeePaise,
       };
     }
+    if (existing.certificateEnabled !== fields.certificateEnabled) {
+      changes.certificateEnabled = {
+        before: existing.certificateEnabled,
+        after: fields.certificateEnabled,
+      };
+    }
+    if (existing.intakeStatus !== fields.intakeStatus) {
+      changes.intakeStatus = { before: existing.intakeStatus, after: fields.intakeStatus };
+    }
+    if (existing.currency !== fields.currency) {
+      changes.currency = { before: existing.currency, after: fields.currency };
+    }
 
     await writeAudit({
       actorUid: session.uid,

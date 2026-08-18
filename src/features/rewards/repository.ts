@@ -106,6 +106,62 @@ export function writeRewardInTx(
 }
 
 /**
+ * Reverses (claws back) the reward earned by a payment, when that payment
+ * is itself reversed — called from inside `reversePaymentRecord`'s own
+ * transaction (fees feature), same pattern as `writeRewardInTx`: reads
+ * first (Firestore transaction rule), then writes alongside the reversal.
+ *
+ * A payment earns at most one reward, so this looks it up by `paymentId`
+ * (no index needed beyond Firestore's automatic single-field index). Debits
+ * the wallet by the reward's own amount regardless of whether it was still
+ * `accrued` or already `paid` out — money already paid to the partner via a
+ * payout still needs to come back out of their running balance; a wallet
+ * can go negative from a clawback, representing an amount owed back,
+ * netted against future earnings. Idempotent: a reward already
+ * `clawed_back` (e.g. transaction retry, or double-reversal guarded
+ * upstream by `reversePaymentRecord`'s own `already_reversed` check) is
+ * left untouched rather than debited twice.
+ */
+export async function clawbackRewardInTx(
+  tx: Transaction,
+  paymentId: string,
+): Promise<{ partnerId: string; amountPaise: number } | null> {
+  const db = adminDb();
+  const ledgerSnap = await tx.get(
+    db.collection('rewardLedger').where('paymentId', '==', paymentId).limit(1),
+  );
+  const ledgerDoc = ledgerSnap.docs[0];
+  if (!ledgerDoc) return null;
+  if (ledgerDoc.get('status') === 'clawed_back') return null;
+
+  const partnerId = ledgerDoc.get('partnerId') as string;
+  const amountPaise = ledgerDoc.get('amountPaise') as number;
+  const now = new Date();
+
+  tx.update(ledgerDoc.ref, { status: 'clawed_back' });
+
+  const walletRef = db.collection('wallets').doc(partnerId);
+  tx.set(
+    walletRef,
+    { partnerId, balancePaise: FieldValue.increment(-amountPaise), updatedAt: now },
+    { merge: true },
+  );
+
+  const walletTxRef = walletRef.collection('transactions').doc();
+  tx.set(walletTxRef, {
+    schemaVersion: 1,
+    kind: 'debit',
+    amountPaise,
+    reason: 'reward_clawback',
+    refLedgerId: ledgerDoc.id,
+    refPayoutId: null,
+    createdAt: now,
+  });
+
+  return { partnerId, amountPaise };
+}
+
+/**
  * Requests a payout for the partner's entire current balance (Doc 25 §13).
  * Transactional: the balance read and the request-doc write must see the
  * same balance, and a second concurrent request must not be allowed to slip
@@ -158,25 +214,35 @@ export async function createPayoutRequestRecord(
   });
 }
 
-/** Approves or rejects a requested payout (Doc 25 §9/§13) — no wallet movement either way. */
+/**
+ * Approves or rejects a requested payout (Doc 25 §9/§13) — no wallet
+ * movement either way. Transactional so two concurrent decisions on the
+ * same payout (e.g. two approvers clicking at once) can't both win: the
+ * `status === 'requested'` check and the update happen atomically, matching
+ * the same TOCTOU-avoidance pattern as `markPayoutPaidRecord` below.
+ */
 export async function decidePayoutRecord(
   payoutId: string,
   decision: 'approve' | 'reject',
   actorUid: string,
   reason: string | undefined,
 ): Promise<'decided' | 'not_found' | 'not_pending'> {
-  const ref = adminDb().collection('payoutRequests').doc(payoutId);
-  const snap = await ref.get();
-  if (!snap.exists) return 'not_found';
-  if (snap.get('status') !== 'requested') return 'not_pending';
+  const db = adminDb();
+  const ref = db.collection('payoutRequests').doc(payoutId);
 
-  await ref.update({
-    status: decision === 'approve' ? 'approved' : 'rejected',
-    decidedBy: actorUid,
-    decidedAt: new Date(),
-    reason: reason ?? null,
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return 'not_found';
+    if (snap.get('status') !== 'requested') return 'not_pending';
+
+    tx.update(ref, {
+      status: decision === 'approve' ? 'approved' : 'rejected',
+      decidedBy: actorUid,
+      decidedAt: new Date(),
+      reason: reason ?? null,
+    });
+    return 'decided';
   });
-  return 'decided';
 }
 
 /**
@@ -203,13 +269,21 @@ export async function markPayoutPaidRecord(
 
     const partnerId = payoutSnap.get('partnerId') as string;
     const amountPaise = payoutSnap.get('amountPaise') as number;
+    const requestedAt = payoutSnap.get('requestedAt');
     const walletRef = db.collection('wallets').doc(partnerId);
 
+    // A request always covers the partner's *entire* balance at request time
+    // (schema.ts's own documented invariant) — so only ledger entries that
+    // already existed then may be flipped to `paid` here. Without this bound,
+    // a reward accrued after the request (but before this mark-paid step
+    // runs) would be marked `paid` even though its amount was never part of
+    // `amountPaise` and was never actually disbursed.
     const accruedSnap = await tx.get(
       db
         .collection('rewardLedger')
         .where('partnerId', '==', partnerId)
-        .where('status', '==', 'accrued'),
+        .where('status', '==', 'accrued')
+        .where('createdAt', '<=', requestedAt),
     );
 
     const now = new Date();

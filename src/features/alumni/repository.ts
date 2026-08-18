@@ -58,6 +58,7 @@ export async function findAlumniRecords(): Promise<AlumniRecord[]> {
         eventsAttended: asNumber(engagement.eventsAttended),
       },
       consentForSuccessStory: data.consentForSuccessStory === true,
+      nextStepEnrolled: data.nextStepEnrolled === true,
       updatedAt: toIso(data.updatedAt),
     };
   });
@@ -84,6 +85,7 @@ export async function findAlumniRecordById(participantId: string): Promise<Alumn
       eventsAttended: asNumber(engagement.eventsAttended),
     },
     consentForSuccessStory: data.consentForSuccessStory === true,
+    nextStepEnrolled: data.nextStepEnrolled === true,
     updatedAt: toIso(data.updatedAt),
   };
 }
@@ -115,36 +117,62 @@ export async function setConsentRecord(
   });
 }
 
+export async function setNextStepStatusRecord(
+  participantId: string,
+  enrolled: boolean,
+  actorUid: string,
+): Promise<void> {
+  await adminDb().collection('alumniRecords').doc(participantId).update({
+    nextStepEnrolled: enrolled,
+    updatedAt: new Date(),
+    updatedBy: actorUid,
+  });
+}
+
 /** BR-05 manual override — `system_admin` only, always audited with a reason. */
+/**
+ * Manual override path for BR-05 (no triggering certificate). Same
+ * transactional all-or-nothing shape as `certificates/repository.ts`'s
+ * `ensureAlumniRecord` and for the same reason: without a transaction, a
+ * crash between the two writes leaves an alumni record whose participant
+ * never actually flipped to `alumni`, and the existence check on retry would
+ * then treat the step as already done, permanently skipping the update.
+ */
 export async function createAlumniOverrideRecord(
   participantId: string,
   actorUid: string,
   branchId: string,
 ): Promise<boolean> {
-  const ref = adminDb().collection('alumniRecords').doc(participantId);
-  const existing = await ref.get();
-  if (existing.exists) return false;
+  const db = adminDb();
+  const alumniRef = db.collection('alumniRecords').doc(participantId);
+  const participantRef = db.collection('participants').doc(participantId);
 
-  const now = new Date();
-  await ref.set({
-    schemaVersion: 1,
-    branchId,
-    participantId,
-    memberSince: now,
-    triggeredByCertificateId: null,
-    engagement: { referrals: 0, eventsAttended: 0 },
-    consentForSuccessStory: false,
-    createdAt: now,
-    createdBy: actorUid,
-    updatedAt: now,
-    updatedBy: actorUid,
+  return db.runTransaction(async (tx) => {
+    const existing = await tx.get(alumniRef);
+    if (existing.exists) return false;
+
+    const now = new Date();
+    tx.set(alumniRef, {
+      schemaVersion: 1,
+      branchId,
+      participantId,
+      memberSince: now,
+      triggeredByCertificateId: null,
+      engagement: { referrals: 0, eventsAttended: 0 },
+      consentForSuccessStory: false,
+      nextStepEnrolled: false,
+      createdAt: now,
+      createdBy: actorUid,
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
+
+    tx.update(participantRef, {
+      status: 'alumni',
+      updatedAt: now,
+      updatedBy: actorUid,
+    });
+
+    return true;
   });
-
-  await adminDb().collection('participants').doc(participantId).update({
-    status: 'alumni',
-    updatedAt: now,
-    updatedBy: actorUid,
-  });
-
-  return true;
 }

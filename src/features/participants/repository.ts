@@ -8,6 +8,7 @@ import type {
   Transaction,
 } from 'firebase-admin/firestore';
 
+import { getIdFormats } from '@/features/settings';
 import { adminDb } from '@/lib/firebase/admin';
 import { DEFAULT_BRANCH_ID } from '@/types/common';
 
@@ -30,6 +31,9 @@ import type {
  */
 
 const COUNTER_ID = 'participantId';
+/** Absolute last-resort fallback only — reached if `settings/idFormats` is
+ * ever unreadable. The real default comes from `getIdFormats().participantPrefix`,
+ * passed in by the caller (see `reserveParticipantId`'s doc comment). */
 const DEFAULT_ID_PREFIX = 'TNX';
 
 function toIso(value: unknown): string | null {
@@ -271,12 +275,25 @@ export async function findByPhone(phone: string): Promise<{ id: string } | null>
  * cannot mint the same ID because the read-modify-write is transactional.
  * Known throughput ceiling (~1 write/sec/counter) is documented in Doc 13
  * §4.1 and is orders of magnitude above admission volume.
+ *
+ * `configuredPrefix` is `settings/idFormats.participantPrefix`, read by the
+ * caller outside the transaction — used only the very first time this
+ * counter is ever reserved; once persisted on the counter document, later
+ * calls reuse that value regardless of later Settings changes (changing the
+ * Settings field never retroactively alters already-issued Participant IDs).
  */
-export async function reserveParticipantId(tx: Transaction, year: number): Promise<string> {
+export async function reserveParticipantId(
+  tx: Transaction,
+  year: number,
+  configuredPrefix: string,
+): Promise<string> {
   const ref = adminDb().collection('counters').doc(COUNTER_ID);
   const snap = await tx.get(ref);
 
-  const prefix = (snap.exists ? asStringOrNull(snap.get('prefix')) : null) ?? DEFAULT_ID_PREFIX;
+  const prefix =
+    (snap.exists ? asStringOrNull(snap.get('prefix')) : null) ??
+    configuredPrefix ??
+    DEFAULT_ID_PREFIX;
   const storedYear = snap.exists ? asNumber(snap.get('year')) : 0;
   // Participant IDs embed the year but the sequence is continuous — a new
   // year does not reset it (unlike receiptNo, which resets per FY by design).
@@ -344,9 +361,14 @@ export interface CreateParticipantRecord {
 export async function createParticipantRecord(record: CreateParticipantRecord): Promise<string> {
   const db = adminDb();
   const now = new Date();
+  const idFormats = await getIdFormats();
 
   return db.runTransaction(async (tx) => {
-    const participantId = await reserveParticipantId(tx, now.getFullYear());
+    const participantId = await reserveParticipantId(
+      tx,
+      now.getFullYear(),
+      idFormats.participantPrefix,
+    );
     const ref = db.collection('participants').doc(participantId);
 
     tx.set(ref, {

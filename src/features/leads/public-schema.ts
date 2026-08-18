@@ -20,6 +20,18 @@ export const FORM_TYPES = [
   'trade_career',
   'workshop',
   'campus_leader',
+  // Added for the website's finalized six-academy content: Faculty
+  // Development and NextStep previously had no matching segment and fell
+  // back to `general`; AI Career Accelerator was misrouted into
+  // `trade_career` via a keyword match meant for Career & Global Placement.
+  // Purely additive (no existing value renamed/removed), so this ships as
+  // an in-place schema update rather than a versioned `/v2/createLead` path
+  // — see the file-level comment on why breaking changes require the
+  // versioned route instead.
+  'faculty_development',
+  'ai_career',
+  'nextstep',
+  'contact',
 ] as const;
 export type FormType = (typeof FORM_TYPES)[number];
 
@@ -36,6 +48,16 @@ export const createPublicLeadSchema = z
     email: z.string().trim().email().nullable().default(null),
     programmeInterestSlug: z.string().trim().max(120).nullable().default(null),
     message: z.string().trim().max(1000).optional(),
+    // Which website page the visitor was on when they submitted (e.g.
+    // "/academies/nextgen-transformation") — a path only, never a full URL
+    // with query string, so it can't leak UTM/referral params twice over.
+    sourcePage: z.string().trim().max(200).optional(),
+    // TCGN QR Referral System (Feature 6) — the human-readable code
+    // ("TCGN-000001") carried through from `/r/{code}` via the website's
+    // `?ref=` param. Deliberately loose validation here: an unresolvable or
+    // inactive code is a normal, expected case (BR-07 — never blocks the
+    // enquiry), resolved at write time in `create-public-lead.ts`, not here.
+    referralCode: z.string().trim().max(40).optional(),
     utm: z
       .object({
         source: z.string().max(120),

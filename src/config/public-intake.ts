@@ -14,8 +14,10 @@ function parseOrigins(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+const PRIMARY_ORIGIN = 'https://terranextglobal.com';
+
 const DEFAULT_ORIGINS = [
-  'https://terranextglobal.com',
+  PRIMARY_ORIGIN,
   'https://www.terranextglobal.com',
   // Local website development against a local CRM.
   ...(process.env.NODE_ENV !== 'production'
@@ -29,3 +31,15 @@ export const PUBLIC_INTAKE = {
     return configured.length > 0 ? configured : DEFAULT_ORIGINS;
   })(),
 } as const;
+
+/**
+ * Where the CRM redirects a QR scan to (TCGN referral flow) — the opposite
+ * direction from `PUBLIC_INTAKE.allowedOrigins` above (which validates
+ * *incoming* calls from the website). Same env-var-with-fallback shape,
+ * deliberately: one configuration idiom for "the public website's address,"
+ * not two.
+ */
+export const PUBLIC_SITE_ORIGIN = (process.env.PUBLIC_SITE_ORIGIN ?? PRIMARY_ORIGIN).replace(
+  /\/$/,
+  '',
+);

@@ -3,25 +3,23 @@ export { RegisterGrowthPartnerDialog } from './components/register-growth-partne
 export { GrowthPartnersTable } from './components/growth-partners-table';
 export { PartnerDetailView } from './components/partner-detail-view';
 export { EditOwnProfileForm } from './components/edit-own-profile-form';
-export { listGrowthPartners, getGrowthPartner } from './queries';
-export { canDecide, canToggleStatus } from './logic';
-export {
-  PARTNER_STATUS_LABELS,
-  PARTNER_STATUS_BADGE,
-  LEADERSHIP_LEVEL_LABELS,
-} from './status-labels';
+export { listGrowthPartners, getGrowthPartner, findGrowthPartnerByHumanId } from './queries';
+export { canDecide, canToggleStatus, buildGrowthPartnerReferralUrl } from './logic';
+export { recordGrowthPartnerScan } from './repository';
+export { setGrowthPartnerLeadershipLevel } from './actions/set-growth-partner-leadership-level';
+export { PARTNER_STATUS_LABELS, PARTNER_STATUS_BADGE } from './status-labels';
 export {
   PARTNER_STATUSES,
-  LEADERSHIP_LEVELS,
   registerGrowthPartnerSchema,
   decideGrowthPartnerSchema,
   setGrowthPartnerStatusSchema,
+  setGrowthPartnerLeadershipLevelSchema,
   updateOwnProfileSchema,
   type GrowthPartner,
   type PartnerStatus,
-  type LeadershipLevel,
   type RegisterGrowthPartnerInput,
   type DecideGrowthPartnerInput,
   type SetGrowthPartnerStatusInput,
+  type SetGrowthPartnerLeadershipLevelInput,
   type UpdateOwnProfileInput,
 } from './schema';

@@ -37,6 +37,9 @@ export function AcademyDialog({ academy }: { academy?: Academy }) {
       name: academy?.name ?? '',
       slug: academy?.slug ?? '',
       description: academy?.description ?? '',
+      displayOrder: academy?.displayOrder ?? 0,
+      icon: academy?.icon ?? '',
+      themeColor: academy?.themeColor ?? '',
     },
   });
 
@@ -131,6 +134,51 @@ export function AcademyDialog({ academy }: { academy?: Academy }) {
                 {form.formState.errors.description.message}
               </p>
             ) : null}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="academy-display-order" required>
+                Display order
+              </Label>
+              <Input
+                id="academy-display-order"
+                type="number"
+                min={0}
+                {...form.register('displayOrder', { valueAsNumber: true })}
+              />
+              <p className="text-xs text-muted-foreground">Lower shows first.</p>
+              {form.formState.errors.displayOrder ? (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.displayOrder.message}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="academy-icon">Icon</Label>
+              <Input id="academy-icon" placeholder="graduation-cap" {...form.register('icon')} />
+              <p className="text-xs text-muted-foreground">A lucide.dev icon name.</p>
+              {form.formState.errors.icon ? (
+                <p className="text-xs text-destructive">{form.formState.errors.icon.message}</p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="academy-color">Theme colour</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="academy-color"
+                  type="color"
+                  className="h-10 w-12 p-1"
+                  value={form.watch('themeColor') || '#0D6B4E'}
+                  onChange={(event) => form.setValue('themeColor', event.target.value)}
+                />
+                <Input placeholder="#0D6B4E" {...form.register('themeColor')} />
+              </div>
+              {form.formState.errors.themeColor ? (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.themeColor.message}
+                </p>
+              ) : null}
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>

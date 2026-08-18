@@ -7,7 +7,9 @@ import { reportFunctionError } from '../observability/report-error';
 import { writeSystemEvent } from '../lib/system-events';
 import {
   mergeChunkTranscripts,
+  resolveKnownSpeaker,
   selectChunksToProcess,
+  type ChannelRoleMapEntry,
   type ChunkTranscriptInput,
 } from './chunk-pipeline';
 import { getSpeechProvider, getSummaryProvider, OPENAI_API_KEY } from './providers/factory';
@@ -63,6 +65,14 @@ function todayIsoDate(): string {
 }
 
 interface ChunkDocData {
+  /** The chunk doc's own Firestore ID — `String(chunkIndex)` for the
+   * single-mixed-stream case (every session today), `${chunkIndex}-
+   * ${channelIndex}` for channel-preserving capture, where multiple chunk
+   * docs legitimately share one `chunkIndex`. Writing back through this ID
+   * (rather than reconstructing `String(chunkIndex)`) is what makes the
+   * per-chunk update below correct under either scheme without needing to
+   * know which one produced a given chunk. */
+  id: string;
   chunkIndex: number;
   status: 'uploading' | 'uploaded' | 'transcribing' | 'transcribed' | 'failed';
   storagePath: string | null;
@@ -70,11 +80,13 @@ interface ChunkDocData {
   startOffsetSec: number;
   language: string | undefined;
   segments: TranscriptSegment[] | undefined;
+  channelIndex: number | null;
 }
 
 function readChunkDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): ChunkDocData {
   const data = doc.data();
   return {
+    id: doc.id,
     chunkIndex: (data.chunkIndex as number | undefined) ?? 0,
     status: (data.status as ChunkDocData['status'] | undefined) ?? 'uploading',
     storagePath: (data.storagePath as string | undefined) ?? null,
@@ -82,7 +94,23 @@ function readChunkDoc(doc: FirebaseFirestore.QueryDocumentSnapshot): ChunkDocDat
     startOffsetSec: (data.startOffsetSec as number | undefined) ?? 0,
     language: data.language as string | undefined,
     segments: data.segments as TranscriptSegment[] | undefined,
+    channelIndex: (data.channelIndex as number | undefined) ?? null,
   };
+}
+
+function readChannelRoleMap(
+  data: FirebaseFirestore.DocumentData | undefined,
+): ChannelRoleMapEntry[] {
+  const raw = data?.channelRoleMap;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object')
+    .map((row) => ({
+      channelIndex: typeof row.channelIndex === 'number' ? row.channelIndex : -1,
+      role: typeof row.role === 'string' ? row.role : 'unassigned',
+      label: typeof row.label === 'string' ? row.label : '',
+    }))
+    .filter((row) => row.channelIndex >= 0);
 }
 
 export const processAiSessionJob = onDocumentWritten(
@@ -134,13 +162,22 @@ export const processAiSessionJob = onDocumentWritten(
     });
     if (!claimed) return;
 
-    const setStage = (stage: JobStage, extra: Record<string, unknown> = {}) =>
-      jobRef.update({
+    // Tracked separately from the Firestore `stage` field itself so a
+    // failure can record *which* stage was in progress when it died
+    // (`failedAtStage` below) — once `stage` is overwritten to `'failed'`,
+    // that information would otherwise be gone. Starts at `'transcribing'`
+    // to match the stage `claimJob` above already committed before this
+    // try block runs.
+    let currentStage: JobStage = 'transcribing';
+    const setStage = (stage: JobStage, extra: Record<string, unknown> = {}) => {
+      currentStage = stage;
+      return jobRef.update({
         stage,
         progressPercent: STAGE_PROGRESS[stage],
         updatedAt: new Date(),
         ...extra,
       });
+    };
 
     try {
       const sessionSnap = await sessionRef.get();
@@ -154,19 +191,29 @@ export const processAiSessionJob = onDocumentWritten(
       const speechProvider = pending.length > 0 ? getSpeechProvider() : null;
       let chunksCompleted = chunks.length - pending.length;
 
+      // Read once per job, not per chunk — the mapping doesn't change
+      // mid-session. Real channel identity (see `resolveKnownSpeaker`) is
+      // dormant today: no capture path yet writes a chunk's `channelIndex`,
+      // so this map is only ever consulted for a `null` and skipped.
+      const settingsSnap =
+        pending.length > 0 ? await db.doc('aiIntelligenceSettings/config').get() : null;
+      const channelRoleMap = readChannelRoleMap(settingsSnap?.data());
+
       for (const chunk of pending) {
         if (!chunk.storagePath) throw new Error(`Chunk ${chunk.chunkIndex} has no recorded audio.`);
 
         const [audioBuffer] = await getStorage().bucket().file(chunk.storagePath).download();
+        const knownSpeaker = resolveKnownSpeaker(chunk.channelIndex, channelRoleMap);
         const transcription = await withRetry(() =>
           speechProvider!.transcribe({
             audioBuffer,
             contentType: chunk.contentType ?? 'audio/webm',
             sessionTitle,
+            knownSpeaker,
           }),
         );
 
-        await chunksRef.doc(String(chunk.chunkIndex)).update({
+        await chunksRef.doc(chunk.id).update({
           status: 'transcribed',
           language: transcription.language,
           segments: transcription.segments,
@@ -210,12 +257,17 @@ export const processAiSessionJob = onDocumentWritten(
       );
 
       await db.collection('aiSummaries').doc(sessionId).set({
-        schemaVersion: 1,
+        schemaVersion: 2,
         sessionId,
         executiveSummary: summary.executiveSummary,
         keyLearningPoints: summary.keyLearningPoints,
         importantQuestions: summary.importantQuestions,
         actionItems: summary.actionItems,
+        trainerDiscussion: summary.trainerDiscussion,
+        studentParticipation: summary.studentParticipation,
+        importantObservations: summary.importantObservations,
+        followUpRequired: summary.followUpRequired,
+        participantInsights: summary.participantInsights,
         createdAt: FieldValue.serverTimestamp(),
       });
       await setStage('saving', { summaryProvider: summaryProvider.name });
@@ -266,6 +318,7 @@ export const processAiSessionJob = onDocumentWritten(
           stage: 'failed' satisfies JobStage,
           progressPercent: STAGE_PROGRESS.failed,
           error: message,
+          failedAtStage: currentStage,
           updatedAt: new Date(),
         })
         .catch(() => undefined);

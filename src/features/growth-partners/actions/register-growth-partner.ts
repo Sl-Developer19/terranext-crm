@@ -1,5 +1,6 @@
 'use server';
 
+import { findDefaultLeadershipLevelSlug } from '@/features/leadership-levels';
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
 import { adminDb } from '@/lib/firebase/admin';
@@ -40,39 +41,52 @@ export async function registerGrowthPartner(
 
   const db = adminDb();
   const normalizedEmail = email.trim().toLowerCase();
+  const defaultLevelSlug = await findDefaultLeadershipLevelSlug();
 
   try {
-    const existing = await db
-      .collection('growthPartners')
-      .where('email', '==', normalizedEmail)
-      .where('deletedAt', '==', null)
-      .limit(1)
-      .get();
-    if (!existing.empty) {
-      return conflictError('A Growth Partner with this email is already registered.');
-    }
-
+    // Transactional check-then-write: two concurrent registrations for the
+    // same email must not both pass the duplicate check and land as two
+    // `growthPartners` docs (mirrors `community-partners/repository.ts`'s
+    // `createCommunityPartnerRecord`, which closes this exact race).
     const ref = db.collection('growthPartners').doc();
     const now = new Date();
-    await ref.set({
-      schemaVersion: 1,
-      displayName,
-      email: normalizedEmail,
-      phone,
-      organizationName: organizationName || null,
-      status: 'pending_approval',
-      leadershipLevel: 'bronze',
-      authUid: null,
-      approvedAt: null,
-      approvedBy: null,
-      lastLoginAt: null,
-      createdAt: now,
-      createdBy: session.uid,
-      updatedAt: now,
-      updatedBy: session.uid,
-      deletedAt: null,
-      deletedBy: null,
+    const duplicate = await db.runTransaction(async (tx) => {
+      const existing = await tx.get(
+        db
+          .collection('growthPartners')
+          .where('email', '==', normalizedEmail)
+          .where('deletedAt', '==', null)
+          .limit(1),
+      );
+      if (!existing.empty) return true;
+
+      tx.set(ref, {
+        schemaVersion: 1,
+        humanPartnerId: null,
+        displayName,
+        email: normalizedEmail,
+        phone,
+        organizationName: organizationName || null,
+        status: 'pending_approval',
+        leadershipLevel: defaultLevelSlug,
+        scanCount: 0,
+        referralCount: 0,
+        authUid: null,
+        approvedAt: null,
+        approvedBy: null,
+        lastLoginAt: null,
+        createdAt: now,
+        createdBy: session.uid,
+        updatedAt: now,
+        updatedBy: session.uid,
+        deletedAt: null,
+        deletedBy: null,
+      });
+      return false;
     });
+    if (duplicate) {
+      return conflictError('A Growth Partner with this email is already registered.');
+    }
 
     await writeAudit({
       actorUid: session.uid,

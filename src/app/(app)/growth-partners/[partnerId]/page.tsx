@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatPaise } from '@/features/catalogue/logic';
 import { PartnerDetailView, getGrowthPartner } from '@/features/growth-partners';
+import { findLeadershipLevels } from '@/features/leadership-levels';
 import { RewardLedgerTable, getWallet, listPartnerRewardLedger } from '@/features/rewards';
 import { can } from '@/lib/rbac/permissions';
 import { requirePermission } from '@/lib/rbac/require';
@@ -26,9 +27,11 @@ export default async function GrowthPartnerDetailPage({
   const canApprove = can(session.role, 'growthPartners:approve');
   const canManageStatus = can(session.role, 'growthPartners:update');
   const canViewRewards = can(session.role, 'rewards:view');
-  const [wallet, ledger] = canViewRewards
-    ? await Promise.all([getWallet(partnerId), listPartnerRewardLedger(partnerId)])
-    : [null, null];
+  const [wallet, ledger, leadershipLevels] = await Promise.all([
+    canViewRewards ? getWallet(partnerId) : Promise.resolve(null),
+    canViewRewards ? listPartnerRewardLedger(partnerId) : Promise.resolve(null),
+    findLeadershipLevels(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -37,6 +40,8 @@ export default async function GrowthPartnerDetailPage({
         partner={partner}
         canApprove={canApprove}
         canManageStatus={canManageStatus}
+        canManageLevel={canManageStatus}
+        leadershipLevels={leadershipLevels}
       />
       {wallet && ledger ? (
         <Card>

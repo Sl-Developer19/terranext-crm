@@ -1162,6 +1162,31 @@ service cloud.firestore {
       allow write: if false; // Admin SDK only
     }
 
+    // ── aiSessionChats/* (AI Intelligence Platform — AI Session Assistant) ──
+    // Read: any role with `aiIntelligence:view` — same visibility as the
+    //   transcript/summary this chat is grounded in. Write: Admin SDK only —
+    //   every message (both the trainer's question and the model's answer)
+    //   is written by the `askSessionAssistant` server action after its own
+    //   permission check; the browser never writes a chat message directly,
+    //   which is what makes a forged "assistant" reply impossible.
+    match /aiSessionChats/{sessionId} {
+      allow read: if can_aiIntelligence_view();
+      allow write: if false; // Admin SDK only
+
+      match /messages/{messageId} {
+        allow read: if can_aiIntelligence_view();
+        allow write: if false; // Admin SDK only
+      }
+    }
+
+    // ── aiAssistantRateLimit/* (AI Intelligence Platform — assistant abuse
+    //    guard) ─────────────────────────────────────────────────────────────
+    // Server-internal bookkeeping only (Phase 13 cost protection) — never
+    //   read or written by any client, regardless of role.
+    match /aiAssistantRateLimit/{docId} {
+      allow read, write: if false; // Admin SDK only
+    }
+
     // Deny-all default. Every business collection must add an explicit block
     // above this wildcard in the same PR that introduces the collection
     // (Doc 09 §4 PR checklist). Hard `delete` stays false everywhere (ADR-009).

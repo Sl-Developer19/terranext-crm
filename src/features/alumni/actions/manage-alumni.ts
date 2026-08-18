@@ -19,14 +19,17 @@ import {
   findAlumniRecordById,
   recordEngagementDelta,
   setConsentRecord,
+  setNextStepStatusRecord,
 } from '../repository';
 import {
   createAlumniOverrideSchema,
   recordEngagementSchema,
   setConsentSchema,
+  setNextStepStatusSchema,
   type CreateAlumniOverrideInput,
   type RecordEngagementInput,
   type SetConsentInput,
+  type SetNextStepStatusInput,
 } from '../schema';
 
 /** Alumni registry mutations (S33). Membership itself is granted by BR-05 or override only. */
@@ -104,6 +107,43 @@ export async function setConsent(input: SetConsentInput): Promise<Result<{ ok: t
     return ok({ ok: true });
   } catch {
     return internalError('Could not update consent. Please try again.');
+  }
+}
+
+/** NextStep enrolment toggle — same shape as `setConsent`, see schema comment. */
+export async function setNextStepStatus(
+  input: SetNextStepStatusInput,
+): Promise<Result<{ ok: true }>> {
+  const session = await getSession();
+  if (!session) return permissionError('Sign in required.');
+  if (!can(session.role, 'alumni:update')) return permissionError();
+
+  const parsed = setNextStepStatusSchema.safeParse(input);
+  if (!parsed.success) return validationError(fieldErrors(parsed.error.issues));
+  const { participantId, enrolled } = parsed.data;
+
+  try {
+    const existing = await findAlumniRecordById(participantId);
+    if (!existing) return notFoundError('Alumni record not found.');
+
+    await setNextStepStatusRecord(participantId, enrolled, session.uid);
+
+    await writeAudit({
+      actorUid: session.uid,
+      actorRole: session.role,
+      action: 'update',
+      entityType: 'alumni_record',
+      entityId: participantId,
+      entityPath: `alumniRecords/${participantId}`,
+      changes: {
+        nextStepEnrolled: { before: existing.nextStepEnrolled, after: enrolled },
+      },
+      context: { feature: 'alumni' },
+    });
+
+    return ok({ ok: true });
+  } catch {
+    return internalError('Could not update NextStep status. Please try again.');
   }
 }
 

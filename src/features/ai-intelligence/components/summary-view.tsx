@@ -1,4 +1,13 @@
-import { CheckSquare, HelpCircle, Lightbulb, Sparkles } from 'lucide-react';
+import {
+  CheckSquare,
+  Eye,
+  HelpCircle,
+  Lightbulb,
+  ListTodo,
+  Sparkles,
+  UserCheck,
+  Users,
+} from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -40,7 +49,12 @@ function ListCard({
   );
 }
 
-/** Summary page — Executive Summary, Key Learning Points, Important Questions, Action Items. */
+/** Summary page — Executive Summary, Trainer Discussion, Student Participation,
+ * Key Learning Points, Important Questions, Important Observations, Action
+ * Items, Follow-up Required, Participant Insights. The five fields beyond
+ * the original four are additive (schemaVersion 2) — a summary generated
+ * before that change simply has empty values for them, rendered the same
+ * as "nothing extracted" rather than as missing data. */
 export function SummaryView({ summary }: { summary: AiSummary | null }) {
   if (!summary) {
     return (
@@ -66,6 +80,33 @@ export function SummaryView({ summary }: { summary: AiSummary | null }) {
         </CardContent>
       </Card>
 
+      {summary.trainerDiscussion || summary.studentParticipation ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {summary.trainerDiscussion ? (
+            <Card>
+              <CardHeader className="flex-row items-center gap-2 space-y-0">
+                <UserCheck className="size-4 text-gold" aria-hidden />
+                <CardTitle>Trainer discussion</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed">{summary.trainerDiscussion}</p>
+              </CardContent>
+            </Card>
+          ) : null}
+          {summary.studentParticipation ? (
+            <Card>
+              <CardHeader className="flex-row items-center gap-2 space-y-0">
+                <Users className="size-4 text-gold" aria-hidden />
+                <CardTitle>Student participation</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed">{summary.studentParticipation}</p>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-3">
         <ListCard
           icon={Lightbulb}
@@ -80,10 +121,28 @@ export function SummaryView({ summary }: { summary: AiSummary | null }) {
           emptyText="None identified."
         />
         <ListCard
+          icon={Eye}
+          title="Important observations"
+          items={summary.importantObservations}
+          emptyText="None identified."
+        />
+        <ListCard
           icon={CheckSquare}
           title="Action items"
           items={summary.actionItems}
           emptyText="None identified."
+        />
+        <ListCard
+          icon={ListTodo}
+          title="Follow-up required"
+          items={summary.followUpRequired}
+          emptyText="None identified."
+        />
+        <ListCard
+          icon={Users}
+          title="Participant insights"
+          items={summary.participantInsights}
+          emptyText="No individually identifiable participant insights."
         />
       </div>
     </div>

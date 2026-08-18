@@ -40,4 +40,12 @@ describe('rankPartnersByRewards (Doc 25 §6)', () => {
   it('returns an empty leaderboard when there are no rewards at all', () => {
     expect(rankPartnersByRewards([])).toEqual([]);
   });
+
+  it('excludes clawed-back entries from the total (a reversed reward was never earned)', () => {
+    const ranked = rankPartnersByRewards([
+      { partnerId: 'p1', partnerName: 'Asha', amountPaise: 50_000, status: 'accrued' },
+      { partnerId: 'p1', partnerName: 'Asha', amountPaise: 20_000, status: 'clawed_back' },
+    ]);
+    expect(ranked).toMatchObject([{ partnerId: 'p1', totalPaise: 50_000 }]);
+  });
 });

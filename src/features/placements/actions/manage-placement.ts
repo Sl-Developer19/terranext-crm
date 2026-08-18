@@ -5,6 +5,7 @@ import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
 import { can } from '@/lib/rbac/permissions';
 import {
+  conflictError,
   internalError,
   notFoundError,
   ok,
@@ -91,7 +92,13 @@ export async function advancePlacement(
       return validationError({ status: `Cannot move from "${existing.status}" to "${status}".` });
     }
 
-    await advancePlacementRecord(placementId, status, note || null, session.uid);
+    const outcome = await advancePlacementRecord(placementId, status, note || null, session.uid);
+    if (outcome === 'not_found') return notFoundError('Placement not found.');
+    if (outcome === 'invalid_transition') {
+      return conflictError(
+        `Placement moved to "${existing.status}" was already changed before this update committed. Please refresh and try again.`,
+      );
+    }
 
     await writeAudit({
       actorUid: session.uid,

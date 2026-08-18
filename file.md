@@ -41,7 +41,7 @@
 <a name="phase-01"></a>
 ## Phase 01 — Vision, Mission & Product Philosophy
 
-**Vision.** TerraNext Global Ventures is building **TerraNext Business OS** — not a lead-capture CRM, but the digital operating backbone connecting marketing, admissions, academic delivery, career services, and alumni relations for its academy network (Parent Leadership Academy, Family Transformation Academy, Gen Z Career Readiness Academy, Trade & Career Transformation, Corporate Services, and future business units).
+**Vision.** TerraNext Global Ventures is building **TerraNext Business OS** — not a lead-capture CRM, but the digital operating backbone connecting marketing, admissions, academic delivery, career services, and alumni relations for its academy network (NextGen Transformation Academy, Family Transformation Academy, Faculty Development Academy, Career & Global Placement Academy, AI Career Accelerator, NextStep, and future business units).
 
 **Core Philosophy.** *"One Participant – One Lifetime Digital Record."* Every individual who ever engages TerraNext — as a lead, student, parent, trainee, or alumnus — holds exactly one permanent Participant ID for life, regardless of how many programmes they enrol in over time.
 
@@ -203,8 +203,8 @@ General enquiry · Gen Z registration/counselling · Family Programme enquiry ·
 |---|---|
 | **Lead** | Source (campaign/referral/organic/college/walk-in), contact details, programme of interest, assigned coordinator, stage (new/contacted/counselling booked/attended/hot/admitted/lost/follow-up) |
 | **Participant** | Participant ID (permanent, one-per-lifetime), personal info, DOB, contact, emergency contact, consolidated lifecycle timeline |
-| **Academy** | Organizational unit offering one or more Programmes (Parent Leadership, Family Transformation, Gen Z Career Readiness, Trade & Career, Corporate Services) |
-| **Programme** | Name, duration (e.g. Gen Z = 48 days; Family = 1 month/20 sessions), eligibility, curriculum metadata |
+| **Academy** | Organizational unit offering one or more Programmes (NextGen Transformation, Family Transformation, Faculty Development, Career & Global Placement, AI Career Accelerator, NextStep) |
+| **Programme** | Name, duration (e.g. NextGen = 30 days; Family = 1 month/20 sessions), eligibility, curriculum metadata |
 | **Batch** | Code, start/end date, capacity, trainer, session timing, linked programme |
 | **Attendance** | Per-session, per-batch, per-participant record; percentage roll-up |
 | **Assessment** | Assessment event, score, pass/fail threshold |

@@ -63,9 +63,32 @@ Every screen in the CRM. Roles column = roles with any access (scope per Doc 04 
 | S52 | Audit logs | `/admin/audit-logs` | Filterable stream (virtualized); SOP 17.16 register presets; entity drill-down | system_admin, founder | export (audited) |
 | S53 | Settings | `/admin/settings` | Org info, ID formats, notification templates | system_admin | edit (audited) |
 
+## Growth Partner Management (GPMS, Doc 25/ADR-014)
+
+Staff oversight screens (gated by the `growthPartners`/`rewards` RBAC modules, Doc 04):
+
+| # | Screen | Route | Purpose · Key elements | Roles | Actions |
+|---|---|---|---|---|---|
+| S60 | Growth Partners | `/growth-partners` | Partner directory: status, leadership level, referral stats | founder, system_admin, ops_manager (view) | approve/reject (`decideGrowthPartner`), suspend/reactivate |
+| S61 | Growth Partner detail | `/growth-partners/[partnerId]` | Profile, referred leads, reward ledger, wallet balance | founder, system_admin, ops_manager (view) | decide status |
+| S62 | Reward Rules | `/rewards` | `rewardRules` list: programme scope, flat/percent, active flag | founder, system_admin (configure); finance (view) | create/edit/deactivate rule |
+| S63 | Payouts | `/payouts` | `payoutRequests` queue: requested → approved → paid | founder, finance (approve) | approve/reject payout |
+
+Partner portal — separate shell, no access to any staff screen above (`requirePartnerSession()`, ADR-014):
+
+| # | Screen | Route | Purpose · Key elements | Roles | Actions |
+|---|---|---|---|---|---|
+| P01 | Partner login | `/partner/login` | Email/password via partner session endpoint | growth partner | sign in |
+| P02 | Partner dashboard | `/partner/dashboard` | Own referral stats, wallet balance, leaderboard | growth partner | navigate |
+| P03 | My leads | `/partner/leads` (+`[leadId]`) | Own referred leads only (`partnerId` row-scope), status | growth partner | submit referral, view status |
+| P04 | My rewards | `/partner/rewards` | Own `rewardLedger` entries, wallet, payout request | growth partner | request payout |
+| P05 | Notifications | `/partner/notifications` | `partnerNotifications/{partnerId}/items` | growth partner | mark read |
+| P06 | Profile | `/partner/profile` | Own profile edit (`updateOwnProfile`) | growth partner | edit |
+
 ## Screen Dependencies (build-order constraints)
 
 - S01, S03, S50–S53 have no business-data dependencies → Milestone 1.
 - S10–S15 depend only on catalogue (S22 minimal) → Milestone 2; S14 additionally needs S23 (batch pick) and fee plan defaults.
 - S21 grows tab-by-tab across milestones — it ships in M3 with Overview/Enrolments/Timeline and gains tabs as modules land (explicitly not blocked on all modules).
 - S42 is last (M8) — it consumes every feature's exported read models.
+- S60–S63 and P01–P06 (GPMS) depend on M3 (participants) and M7 (fee/payment recording) for reward computation, but not on any other M8 deliverable — shipped independently, 2026-07-26.

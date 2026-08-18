@@ -319,10 +319,13 @@ Nothing here is optional. `[ ]` means unverified.
 ### Pre-deployment
 - [ ] `npm run typecheck` · `lint` · `test` · `build` · `check:rules-drift` all pass
 - [x] `npm run test:rules` passes (**requires JDK 21+**) — 28/28, see §6a. Re-run after any further `firestore.rules` edit
+- [ ] `npm run perf:lighthouse` passes against `/login` and `/partner/login` (Doc 11 §8, Doc 20 GPMS session)
+- [ ] `npm run perf:lighthouse:auth` passes against `/dashboard`, `/reports`, `/participants` on a staging deploy with a seeded perf-test staff account (`PERF_BASE_URL`/`PERF_TEST_EMAIL`/`PERF_TEST_PASSWORD`)
 - [ ] All §1 environment variables set on the production backend
 - [ ] `JOBS_SECRET` generated and stored in a password manager
 - [ ] Messaging provider credentials verified with a real test send
 - [ ] `PUBLIC_INTAKE_ORIGINS` matches the live website origin exactly
+- [ ] `PUBLIC_INTAKE_ORIGINS` also covers the growth-partner registration form's origin (shared with `createLead`, Doc 25 §4)
 
 ### Deployment
 - [ ] Rules deployed and spot-checked in the Rules Playground
@@ -344,6 +347,12 @@ Nothing here is optional. `[ ]` means unverified.
 - [ ] Export a report → file downloads and an `export` audit entry appears
 - [ ] Upload a participant document → stored and retrievable
 - [ ] Response headers include CSP and HSTS (`curl -I https://<crm-domain>`)
+- [ ] Submit the website Growth Partner registration form → `growthPartners` doc appears, `status: pending_approval`
+- [ ] Approve the pending partner (founder/system_admin/ops_manager) → Firebase Auth user minted, partner can sign in at `/partner/login`
+- [ ] Signed-in partner submits a referral → `leads` doc with `source: referral`, `partnerId` set; partner sees it under "My Leads" only (no other partner's leads visible)
+- [ ] Convert the referred lead and record a payment → `rewardLedger` entry created, partner's `wallets` balance credited, in the same transaction as the payment
+- [ ] Partner requests a payout → appears in `/payouts` queue; finance/founder approves → wallet debited, status `paid`
+- [ ] A second, unrelated partner account cannot read the first partner's `growthPartners`/`wallets`/`rewardLedger`/leads (spot-check in Rules Playground or via a second portal session)
 
 ### Operational readiness
 - [ ] All three Scheduler jobs created and each manually triggered once successfully
@@ -356,5 +365,20 @@ Nothing here is optional. `[ ]` means unverified.
 - [ ] Restore drill completed and recorded
 
 ### Sign-off
-- [ ] UAT against FR-01…FR-10 signed (BRD §29)
+- [ ] UAT against FR-01…FR-10 signed (BRD §29) — see `docs/26-uat-signoff-report.md`
+- [ ] Security review of public endpoints signed — see `docs/27-security-review-public-endpoints.md`
 - [ ] Owner sign-off recorded with date
+
+---
+
+## 8. CI Gates (as of 2026-07-26 reconciliation)
+
+`.github/workflows/ci.yml` runs three jobs:
+
+| Job | Trigger | Blocks merge? |
+|---|---|---|
+| `quality` (typecheck, lint, unit tests, rules drift-check, build) | every push + PR | yes |
+| `rules` (Firestore emulator deny-tests, Doc 18) | every push + PR | yes |
+| `perf` (Lighthouse CI, public shell only) | push to `main` only | no — reports, per Doc 11 §8's release cadence, not per-PR |
+
+`npm run perf:lighthouse:auth` (authenticated routes) is **not** wired into CI — it needs a live staging deploy and a seeded perf-test staff account, so it's a manual pre-release step (§7 Pre-deployment) until a staging environment + secret rotation process exists to automate it safely.

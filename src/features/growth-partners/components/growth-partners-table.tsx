@@ -37,6 +37,9 @@ export function GrowthPartnersTable({ partners }: { partners: GrowthPartner[] })
         <TableRow>
           <TableHead>Name</TableHead>
           <TableHead>Organisation</TableHead>
+          <TableHead>Partner ID</TableHead>
+          <TableHead>Scans</TableHead>
+          <TableHead>Referred leads</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Registered</TableHead>
         </TableRow>
@@ -53,6 +56,11 @@ export function GrowthPartnersTable({ partners }: { partners: GrowthPartner[] })
             <TableCell className="text-sm text-muted-foreground">
               {partner.organizationName ?? '—'}
             </TableCell>
+            <TableCell className="text-sm text-muted-foreground">
+              {partner.humanPartnerId ?? '—'}
+            </TableCell>
+            <TableCell className="text-sm text-muted-foreground">{partner.scanCount}</TableCell>
+            <TableCell className="text-sm text-muted-foreground">{partner.referralCount}</TableCell>
             <TableCell>
               <StatusBadge
                 kind={PARTNER_STATUS_BADGE[partner.status]}

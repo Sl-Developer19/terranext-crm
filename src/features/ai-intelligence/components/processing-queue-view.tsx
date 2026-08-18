@@ -1,6 +1,6 @@
 'use client';
 
-import { ListChecks, RotateCcw } from 'lucide-react';
+import { Check, ListChecks, Minus, RotateCcw, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -16,16 +16,59 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils/cn';
 
 import { retryProcessingJob } from '../actions/retry-processing-job';
 import {
+  deriveProcessingStageChecklist,
   JOB_STAGE_KIND,
   JOB_STAGE_LABELS,
   isTerminalJobStage,
   jobStageProgressPercent,
+  type ProcessingStageState,
 } from '../logic';
 import type { AiProcessingJob } from '../schema';
 import { AutoRefresh } from './auto-refresh';
+
+const STAGE_ICON: Record<ProcessingStageState, typeof Check> = {
+  done: Check,
+  failed: X,
+  pending: Minus,
+  unavailable: Minus,
+};
+
+const STAGE_ICON_CLASS: Record<ProcessingStageState, string> = {
+  done: 'text-status-success',
+  failed: 'text-destructive',
+  pending: 'text-muted-foreground/50',
+  unavailable: 'text-muted-foreground/50',
+};
+
+function StageChecklist({ job }: { job: AiProcessingJob }) {
+  const rows = deriveProcessingStageChecklist(job);
+  return (
+    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+      {rows.map((row) => {
+        const Icon = STAGE_ICON[row.state];
+        return (
+          <li
+            key={row.key}
+            className="flex items-center gap-1 text-xs text-muted-foreground"
+            title={
+              row.state === 'unavailable'
+                ? `${row.label}: not available (no real speech provider configured)`
+                : `${row.label}: ${row.state}`
+            }
+          >
+            <Icon className={cn('size-3.5 shrink-0', STAGE_ICON_CLASS[row.state])} aria-hidden />
+            {row.label}
+            {row.state === 'unavailable' ? ' (not available)' : ''}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function ProcessingQueueView({
   jobs,
@@ -88,6 +131,7 @@ export function ProcessingQueueView({
                   {job.stage === 'failed' && job.error ? (
                     <p className="mt-1 max-w-xs text-xs text-destructive">{job.error}</p>
                   ) : null}
+                  <StageChecklist job={job} />
                 </TableCell>
                 <TableCell>
                   <div

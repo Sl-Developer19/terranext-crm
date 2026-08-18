@@ -63,7 +63,11 @@ export function ProgrammeDialog({
       curriculumSummary: programme?.curriculumSummary ?? '',
       minAttendancePct: programme?.certificateRules.minAttendancePct ?? 75,
       minAssessmentScore: programme?.certificateRules.minAssessmentScore ?? 40,
+      certificateEnabled: programme?.certificateEnabled ?? true,
       totalFeePaise: programme?.feePlanDefault.totalPaise ?? 0,
+      currency: programme?.currency ?? 'INR',
+      intakeStatus: programme?.intakeStatus ?? 'open',
+      capacity: programme?.capacity ?? undefined,
       installments: programme?.feePlanDefault.installments ?? [],
     },
   });
@@ -214,11 +218,69 @@ export function ProgrammeDialog({
                 <Label htmlFor="programme-curriculum">Curriculum summary</Label>
                 <Textarea id="programme-curriculum" {...form.register('curriculumSummary')} />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="programme-intake-status" required>
+                  Intake status
+                </Label>
+                <Select
+                  defaultValue={programme?.intakeStatus ?? 'open'}
+                  onValueChange={(value) =>
+                    form.setValue('intakeStatus', value as ProgrammeInput['intakeStatus'])
+                  }
+                >
+                  <SelectTrigger id="programme-intake-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">Open</SelectItem>
+                    <SelectItem value="closed">Closed</SelectItem>
+                    <SelectItem value="waitlist">Waitlist</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="programme-capacity">Capacity (optional)</Label>
+                <Input
+                  id="programme-capacity"
+                  type="number"
+                  min={1}
+                  {...form.register('capacity', {
+                    // `valueAsNumber` reads the DOM's native `.valueAsNumber`,
+                    // which is NaN for an empty input — but this field is
+                    // optional, so empty must resolve to undefined, not a
+                    // value Zod's z.number() rejects outright.
+                    setValueAs: (value) =>
+                      value === '' || value === null ? undefined : Number(value),
+                  })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  A planning figure — batches carry their own enrolment capacity separately.
+                </p>
+                {form.formState.errors.capacity ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.capacity.message}
+                  </p>
+                ) : null}
+              </div>
             </div>
           </section>
 
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">Certificate rules (BR-03)</h3>
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 rounded border-input"
+                {...form.register('certificateEnabled')}
+              />
+              <span>
+                <span className="font-medium">Certificates enabled for this programme</span>
+                <span className="block text-xs text-muted-foreground">
+                  When off, certificate issuance is blocked outright for every participant on this
+                  programme, regardless of the thresholds below.
+                </span>
+              </span>
+            </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="programme-attendance" required>
@@ -270,19 +332,42 @@ export function ProgrammeDialog({
                 Add installment
               </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="programme-total" required>
-                Total fee (paise)
-              </Label>
-              <Input
-                id="programme-total"
-                type="number"
-                min={0}
-                {...form.register('totalFeePaise', { valueAsNumber: true })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Stored as integer paise. {formatPaise(watchedTotal || 0)}
-              </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="programme-total" required>
+                  Total fee (paise)
+                </Label>
+                <Input
+                  id="programme-total"
+                  type="number"
+                  min={0}
+                  {...form.register('totalFeePaise', { valueAsNumber: true })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Stored as integer paise. {formatPaise(watchedTotal || 0)}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="programme-currency" required>
+                  Currency
+                </Label>
+                <Input
+                  id="programme-currency"
+                  placeholder="INR"
+                  maxLength={3}
+                  className="font-mono uppercase"
+                  {...form.register('currency')}
+                />
+                <p className="text-xs text-muted-foreground">
+                  ISO code. Amounts are always stored in the smallest unit (ADR-012) — non-INR
+                  currencies are recorded but not yet computed differently anywhere.
+                </p>
+                {form.formState.errors.currency ? (
+                  <p className="text-xs text-destructive">
+                    {form.formState.errors.currency.message}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             {fields.map((field, index) => (

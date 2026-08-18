@@ -38,8 +38,15 @@ crm/
 │  │  │  ├─ communications/
 │  │  │  ├─ colleges/
 │  │  │  ├─ reports/
+│  │  │  ├─ growth-partners/  [partnerId]/   # GPMS staff oversight (Doc 25, ADR-014)
+│  │  │  ├─ rewards/                         # reward rules config
+│  │  │  ├─ payouts/                         # payout approval queue
 │  │  │  └─ admin/                # users/, roles/, audit-logs/, settings/
+│  │  ├─ partner/                 # GPMS partner portal — separate shell, own auth
+│  │  │  ├─ login/
+│  │  │  └─ (portal)/             # dashboard/, leads/ [leadId]/, rewards/, notifications/, profile/
 │  │  ├─ api/                     # route handlers only where server actions don't fit
+│  │  │  # incl. createLead/, registerGrowthPartner/, partner-session/ (public/partner intake)
 │  │  ├─ layout.tsx  globals.css
 │  ├─ components/
 │  │  ├─ ui/                      # ShadCN primitives + variants (no business logic)

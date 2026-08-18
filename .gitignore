@@ -13,11 +13,16 @@ functions/lib/
 
 # testing
 coverage/
+.lighthouseci/
 
 # env — never commit real config (Doc 10: secrets discipline)
 .env
 .env.local
 .env.*.local
+# Firebase Functions local secret override (functions/.env.example §"OPENAI_API_KEY
+# is a SECRET"): read automatically by the Functions emulator, never deployed,
+# never committed — https://firebase.google.com/docs/functions/config-env#local-secret-access
+.secret.local
 
 # firebase
 .firebase/

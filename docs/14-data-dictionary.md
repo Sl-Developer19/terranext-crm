@@ -201,6 +201,36 @@ Account: `participantId/programmeId` (R), `plan` (map R: `{totalPaise, discountP
 
 `channel` (`email|sms|whatsapp`), `direction` (`outbound|inbound`), `refType` (`lead|participant`) + `refId` (R), `templateKey` (string|null), `subject` (O), `bodyPreview` (R ≤ 300 — full body not stored; provider is system of record), `status` (`queued|sent|failed`), `sentAt` (ts|null), `byUid` (R uid|`"system"`). FR-10.3: send path creates this doc first. Index: (refType, refId, sentAt desc).
 
+## 20a. Growth Partner Management (GPMS, Doc 25/ADR-014)
+
+**`growthPartners/{partnerId}`** — external referral-partner identity. Writes: server actions only (`registerGrowthPartner`, `decideGrowthPartner`, `setGrowthPartnerStatus`, `updateOwnProfile`).
+
+| Field | Type | Req | Validation | Example |
+|---|---|---|---|---|
+| displayName | string | R | 2–120 chars | `"Priya Retail Partners"` |
+| email | string | R | email | `"priya@partner.example"` |
+| phone | string | R | E.164 | `"+919876543210"` |
+| organizationName | string\|null | O | ≤ 160 | — |
+| applicationNotes | string\|null | O | ≤ 1000; free text from public registration, null for staff-entered partners (2026-07-26 addition) | — |
+| status | string | R | `pending_approval\|active\|suspended\|rejected` | `"active"` |
+| leadershipLevel | string | R | `bronze\|silver\|gold\|platinum` | `"bronze"` |
+| authUid | string\|null | O | set once approved | — |
+| approvedAt / approvedBy | ts\|null / string\|null | O | set together | — |
+
+Indexes: (deletedAt, createdAt desc) — directory; (email, deletedAt) — registration dedupe; (authUid, deletedAt) — session→partner lookup.
+
+**`rewardRules/{ruleId}`** — configurable reward computation (never hardcoded). `programmeId` (R, string or literal `"ALL"`), `kind` (R `flat|percent`), `amountPaise` (int > 0, required when `kind=flat`), `percentBps` (1–10000, required when `kind=percent`), `active` (R bool), `effectiveFrom` (ts R). Index: (programmeId, active).
+
+**`rewardLedger/{ledgerId}`** — one immutable entry per reward event (append-only). `partnerId/leadId/participantId/feeAccountId/paymentId/ruleId` (R, string), `amountPaise` (R int > 0), `status` (R `accrued|paid`). Indexes: (partnerId, createdAt desc), (partnerId, status).
+
+**`wallets/{partnerId}`** — doc ID = partner ID. `balancePaise` (R int ≥ 0, transaction-maintained only — never a bare counter write). Subcollection **`transactions/{txId}`**: `kind` (R `credit|debit`), `amountPaise` (R int > 0), `reason` (R string), `refLedgerId` \| `refPayoutId` (O, exactly one set).
+
+**`payoutRequests/{payoutId}`** — `partnerId` (R), `amountPaise` (R int > 0), `status` (R `requested|approved|rejected|processing|paid`), `requestedAt` (ts R), `decidedBy`/`decidedAt` (O, set together on decision).
+
+**`partnerNotifications/{partnerId}/items/{id}`** — same shape as an in-app staff notification, scoped per partner; partner-readable only for their own `partnerId`.
+
+**Extended fields** (additive, no shape break): `leads/{id}` gains `partnerId: string|null`, `partnerName: string|null` (mirrors `assignedToUid`/`assignedToName`, §8); `participants/{id}` gains `partnerId: string|null`, propagated from the originating lead at conversion (§11).
+
 ## 20. Future-Reserved (fields exist, features don't)
 
 `family.familyRecordId` (family entity), `branchId` everywhere (branch UI), `portalAccounts` collection (portal identity mapping — not created until portals), `stats/{period}` aggregates (created with dashboards, M-milestone per roadmap Doc 22).

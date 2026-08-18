@@ -6,6 +6,7 @@ import {
   financeSection,
   formatMetricValue,
   outcomesSection,
+  partnerNetworkSection,
   rate,
   sectionsForRole,
 } from './logic';
@@ -40,6 +41,18 @@ const EMPTY: DashboardCounts = {
   gpAdmittedReferrals: 0,
   gpRewardsAccruedPaise: 0,
   gpRewardsPaidPaise: 0,
+  cpTotalPartners: 0,
+  cpActivePartners: 0,
+  qualifiedReferrals: 0,
+  walletBalancePaise: 0,
+  scanCapped: {
+    trainers: false,
+    assessments: false,
+    attendance: false,
+    revenue: false,
+    gpRewards: false,
+    walletBalance: false,
+  },
 };
 
 const POPULATED: DashboardCounts = {
@@ -66,6 +79,16 @@ const POPULATED: DashboardCounts = {
   attendanceSampleSize: 46,
   revenuePaisePaid: 7_500_000,
   revenuePaiseOutstanding: 2_500_000,
+  gpTotalPartners: 10,
+  gpActivePartners: 8,
+  gpTotalReferrals: 40,
+  gpAdmittedReferrals: 12,
+  gpRewardsAccruedPaise: 500_000,
+  gpRewardsPaidPaise: 300_000,
+  cpTotalPartners: 5,
+  cpActivePartners: 3,
+  qualifiedReferrals: 20,
+  walletBalancePaise: 150_000,
 };
 
 function find(metrics: Metric[], key: string): Metric {
@@ -183,15 +206,146 @@ describe('populated figures compute correctly', () => {
   });
 });
 
+describe('a scan-capped source renders partial with a caveat, never a silent ok (Doc 11 §8)', () => {
+  it('marks attendance partial when the bounded scan hit the cap', () => {
+    const capped: DashboardCounts = {
+      ...POPULATED,
+      scanCapped: { ...POPULATED.scanCapped, attendance: true },
+    };
+    const metric = find(academicSection(capped).metrics, 'attendancePercentage');
+    expect(metric.state).toBe('partial');
+    if (metric.state === 'partial') {
+      expect(metric.value).toBe(POPULATED.attendancePctMean);
+      expect(metric.caveat).toMatch(/1,000/);
+    }
+  });
+
+  it('marks trainer utilisation partial when capped, ok otherwise', () => {
+    const capped: DashboardCounts = {
+      ...POPULATED,
+      scanCapped: { ...POPULATED.scanCapped, trainers: true },
+    };
+    expect(find(academicSection(capped).metrics, 'trainerUtilisation').state).toBe('partial');
+    expect(find(academicSection(POPULATED).metrics, 'trainerUtilisation').state).toBe('ok');
+  });
+
+  it('marks revenue figures partial when the fee-account scan hit the cap', () => {
+    const capped: DashboardCounts = {
+      ...POPULATED,
+      scanCapped: { ...POPULATED.scanCapped, revenue: true },
+    };
+    const metrics = financeSection(capped).metrics;
+    expect(find(metrics, 'revenueSummary').state).toBe('partial');
+    expect(find(metrics, 'outstandingFees').state).toBe('partial');
+  });
+});
+
+describe('partnerNetworkSection (Feature 9 — TCGN additions)', () => {
+  it('combines Growth Partner and Community Partner totals without a new query', () => {
+    const metric = find(partnerNetworkSection(POPULATED).metrics, 'combinedTotalPartners');
+    expect(metric.state).toBe('ok');
+    if (metric.state === 'ok') {
+      expect(metric.value).toBe(POPULATED.gpTotalPartners + POPULATED.cpTotalPartners);
+      expect(metric.value).toBe(15);
+    }
+  });
+
+  it('reports Community Partner totals independently of Growth Partner totals', () => {
+    const metrics = partnerNetworkSection(POPULATED).metrics;
+    const total = find(metrics, 'cpTotalPartners');
+    const active = find(metrics, 'cpActivePartners');
+    expect(total.state).toBe('ok');
+    expect(active.state).toBe('ok');
+    if (total.state === 'ok') expect(total.value).toBe(5);
+    if (active.state === 'ok') {
+      expect(active.value).toBe(3);
+      expect(active.detail).toBe('of 5 total');
+    }
+  });
+
+  it('reports qualified referrals as its own count, distinct from total/converted', () => {
+    const metric = find(partnerNetworkSection(POPULATED).metrics, 'qualifiedReferrals');
+    expect(metric.state).toBe('ok');
+    if (metric.state === 'ok') expect(metric.value).toBe(20);
+  });
+
+  it('reuses gpAdmittedReferrals as-is for Converted Referrals — no new aggregation', () => {
+    const metric = find(partnerNetworkSection(POPULATED).metrics, 'convertedReferrals');
+    expect(metric.state).toBe('ok');
+    if (metric.state === 'ok') expect(metric.value).toBe(POPULATED.gpAdmittedReferrals);
+  });
+
+  it('renders wallet balance ok when the scan was not capped', () => {
+    const metric = find(partnerNetworkSection(POPULATED).metrics, 'walletBalance');
+    expect(metric.state).toBe('ok');
+    if (metric.state === 'ok') expect(metric.value).toBe(150_000);
+  });
+
+  it('renders wallet balance partial with a caveat when the scan hit the cap (Doc 11 §8)', () => {
+    const capped: DashboardCounts = {
+      ...POPULATED,
+      scanCapped: { ...POPULATED.scanCapped, walletBalance: true },
+    };
+    const metric = find(partnerNetworkSection(capped).metrics, 'walletBalance');
+    expect(metric.state).toBe('partial');
+    if (metric.state === 'partial') expect(metric.caveat).toMatch(/1,000/);
+  });
+
+  it('leaves the original gp* referral and reward metrics unchanged (Feature 9 decision 4)', () => {
+    const metrics = partnerNetworkSection(POPULATED).metrics;
+    const totalReferrals = find(metrics, 'gpTotalReferrals');
+    expect(totalReferrals.state).toBe('ok');
+    if (totalReferrals.state === 'ok') expect(totalReferrals.value).toBe(40);
+    const conversion = find(metrics, 'gpReferralConversionRate');
+    expect(conversion.state).toBe('ok');
+    if (conversion.state === 'ok') expect(conversion.value).toBe(30); // 12/40
+  });
+});
+
+describe('partnerNetworkSection empty state — no Community Partners, no wallets, no referrals', () => {
+  it('renders every partner/wallet count as a genuine 0, never unavailable', () => {
+    const metrics = partnerNetworkSection(EMPTY).metrics;
+    for (const key of [
+      'combinedTotalPartners',
+      'gpTotalPartners',
+      'gpActivePartners',
+      'cpTotalPartners',
+      'cpActivePartners',
+      'gpTotalReferrals',
+      'qualifiedReferrals',
+      'convertedReferrals',
+    ] as const) {
+      const metric = find(metrics, key);
+      expect(metric.state).toBe('ok');
+      if (metric.state === 'ok') expect(metric.value).toBe(0);
+    }
+  });
+
+  it('renders wallet balance as ok/0, not partial or unavailable, on an empty wallets collection', () => {
+    const metric = find(partnerNetworkSection(EMPTY).metrics, 'walletBalance');
+    expect(metric.state).toBe('ok');
+    if (metric.state === 'ok') expect(metric.value).toBe(0);
+  });
+
+  it('marks referral conversion unavailable, not 0%, with zero referrals recorded', () => {
+    const metric = find(partnerNetworkSection(EMPTY).metrics, 'gpReferralConversionRate');
+    expect(metric.state).toBe('unavailable');
+  });
+
+  it('never throws building the section from an all-zero DashboardCounts', () => {
+    expect(() => partnerNetworkSection(EMPTY)).not.toThrow();
+  });
+});
+
 describe('sectionsForRole (SOP 15.5 access matrix)', () => {
-  it('gives the founder the full SOP 18.10 KPI set plus Growth Partners', () => {
+  it('gives the founder the full SOP 18.10 KPI set plus Partner Network', () => {
     const titles = sectionsForRole('founder', POPULATED).map((s) => s.title);
     expect(titles).toEqual([
       'Acquisition',
       'Academic delivery',
       'Outcomes',
       'Finance',
-      'Growth Partners',
+      'Partner Network',
     ]);
   });
 
@@ -201,10 +355,10 @@ describe('sectionsForRole (SOP 15.5 access matrix)', () => {
     expect(titles).toEqual(['Academic delivery']);
   });
 
-  it('shows finance its own section plus Growth Partners reward accounting', () => {
+  it('shows finance its own section plus Partner Network reward accounting', () => {
     expect(sectionsForRole('finance', POPULATED).map((s) => s.title)).toEqual([
       'Finance',
-      'Growth Partners',
+      'Partner Network',
     ]);
   });
 

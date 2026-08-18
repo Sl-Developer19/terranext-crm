@@ -1,8 +1,10 @@
 import 'server-only';
 
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import type { DocumentSnapshot, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 import { emailSignature, smsSignature } from '@/config/organisation';
+import { getBrandingSettings } from '@/features/settings/queries';
 import { adminDb } from '@/lib/firebase/admin';
 import { renderBrandedEmailHtml } from '@/lib/messaging/email-template';
 import { getEmailProvider, getSmsProvider, getWhatsAppProvider } from '@/lib/messaging/providers';
@@ -21,6 +23,14 @@ import type { Channel, RefType } from './schema';
  * Ordering guarantee this deliberately does not make: messages are not sent in
  * a strict sequence. They are independent notifications, and serialising them
  * would let one slow recipient hold up everyone else's.
+ *
+ * `dispatchQueuedCommunications`'s `limit(BATCH_SIZE)` has no `orderBy`, so on
+ * a queue with more than `BATCH_SIZE` rows due at once, any given pass only
+ * examines an arbitrary subset — a message sent interactively is not
+ * guaranteed a slot just because it is new. `dispatchOneCommunication` exists
+ * for exactly that case: the send path calls it with the row it just wrote,
+ * so that row always gets attempted immediately regardless of backlog size,
+ * while the scheduled sweep above still owns bulk draining and retries.
  */
 
 const BATCH_SIZE = 25;
@@ -76,8 +86,11 @@ async function send(
   subject: string,
   body: string,
   appOrigin: string,
+  emailLogoUrl: string,
 ) {
   if (channel === 'email') {
+    // eslint-disable-next-line no-console
+    console.log('[email] sending communication to recipient:', to);
     return getEmailProvider().send({
       to,
       subject,
@@ -89,11 +102,99 @@ async function send(
         heading: subject || 'Message from TerraNext Global Ventures',
         bodyText: body,
         appOrigin,
+        ...(emailLogoUrl ? { logoUrl: emailLogoUrl } : {}),
       }),
     });
   }
   const provider = channel === 'whatsapp' ? getWhatsAppProvider() : getSmsProvider();
   return provider.send({ to, body: `${body}${smsSignature()}` });
+}
+
+type RowOutcome = 'sent' | 'failed' | 'requeued' | 'skipped';
+
+/**
+ * Attempts one row and writes its resulting status. Shared by the scheduled
+ * batch sweep and the single-row immediate dispatch so both follow the exact
+ * same due-check, send, backoff, and error-isolation behaviour.
+ */
+async function processRow(
+  doc: DocumentSnapshot | QueryDocumentSnapshot,
+  now: Date,
+  appOrigin: string,
+  emailLogoUrl: string,
+): Promise<RowOutcome> {
+  const nextAttemptRaw = doc.get('nextAttemptAt');
+  const nextAttemptAt = nextAttemptRaw instanceof Timestamp ? nextAttemptRaw.toDate() : null;
+  if (!isDue(nextAttemptAt, now)) return 'skipped';
+
+  const channel = (asString(doc.get('channel')) || 'email') as Channel;
+  const refType = (asString(doc.get('refType')) || 'lead') as RefType;
+  const refId = asString(doc.get('refId'));
+  const attempts = typeof doc.get('attempts') === 'number' ? (doc.get('attempts') as number) : 0;
+
+  // Isolate this row's failure from the rest of the batch — a provider call
+  // that throws (rather than resolving to a SendOutcome) or a transient
+  // Firestore write error must not abort every other queued message this
+  // pass, and must not silently strand a row whose email may already have
+  // gone out. The row is left untouched on error so the next pass retries
+  // it rather than reporting a false status.
+  try {
+    // The body is held transiently for exactly this moment; if it is gone
+    // the preview is all that survives, and sending a truncated message
+    // would be worse than reporting the problem.
+    const body = asString(doc.get('pendingBody'));
+    const address = await resolveAddress(refType, refId, channel);
+
+    let outcome: SendOutcome;
+    if (!address) {
+      outcome = {
+        status: 'failed',
+        reason: `No ${channel === 'email' ? 'email address' : 'phone number'} on file for this ${refType}.`,
+      };
+    } else if (!body) {
+      outcome = { status: 'failed', reason: 'Message body is no longer available to send.' };
+    } else {
+      outcome = await send(
+        channel,
+        address,
+        asString(doc.get('subject')),
+        body,
+        appOrigin,
+        emailLogoUrl,
+      );
+    }
+
+    const decision = decideNext(outcome, attempts, now);
+
+    await doc.ref.update({
+      status: decision.status,
+      failureReason: decision.failureReason,
+      attempts: FieldValue.increment(1),
+      nextAttemptAt: decision.nextAttemptAt,
+      ...(decision.status === 'sent'
+        ? {
+            sentAt: now,
+            // Body deleted on success: the provider is the system of record
+            // from here on, and the log keeps its preview (Doc 14 §19).
+            pendingBody: FieldValue.delete(),
+          }
+        : {}),
+      ...(decision.status === 'failed' ? { pendingBody: FieldValue.delete() } : {}),
+      updatedAt: now,
+      updatedBy: 'system',
+    });
+
+    if (decision.status === 'sent') return 'sent';
+    if (decision.status === 'failed') return 'failed';
+    return 'requeued';
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('communications dispatch: row failed, leaving it queued for retry', {
+      communicationId: doc.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return 'skipped';
+  }
 }
 
 export async function dispatchQueuedCommunications(
@@ -103,85 +204,47 @@ export async function dispatchQueuedCommunications(
   const db = adminDb();
   const summary: DispatchSummary = { examined: 0, sent: 0, failed: 0, requeued: 0, skipped: 0 };
 
-  const snap = await db
-    .collection('communications')
-    .where('status', '==', 'queued')
-    .where('direction', '==', 'outbound')
-    .limit(BATCH_SIZE)
-    .get();
+  const [snap, branding] = await Promise.all([
+    db
+      .collection('communications')
+      .where('status', '==', 'queued')
+      .where('direction', '==', 'outbound')
+      .limit(BATCH_SIZE)
+      .get(),
+    getBrandingSettings(),
+  ]);
 
   for (const doc of snap.docs) {
     summary.examined += 1;
-
-    const nextAttemptRaw = doc.get('nextAttemptAt');
-    const nextAttemptAt = nextAttemptRaw instanceof Timestamp ? nextAttemptRaw.toDate() : null;
-    if (!isDue(nextAttemptAt, now)) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    const channel = (asString(doc.get('channel')) || 'email') as Channel;
-    const refType = (asString(doc.get('refType')) || 'lead') as RefType;
-    const refId = asString(doc.get('refId'));
-    const attempts = typeof doc.get('attempts') === 'number' ? (doc.get('attempts') as number) : 0;
-
-    // Isolate one row's failure from the rest of the batch — a provider call
-    // that throws (rather than resolving to a SendOutcome) or a transient
-    // Firestore write error must not abort every other queued message this
-    // pass, and must not silently strand a row whose email may already have
-    // gone out. The row is left untouched on error so the next pass retries
-    // it rather than reporting a false status.
-    try {
-      // The body is held transiently for exactly this moment; if it is gone
-      // the preview is all that survives, and sending a truncated message
-      // would be worse than reporting the problem.
-      const body = asString(doc.get('pendingBody'));
-      const address = await resolveAddress(refType, refId, channel);
-
-      let outcome: SendOutcome;
-      if (!address) {
-        outcome = {
-          status: 'failed',
-          reason: `No ${channel === 'email' ? 'email address' : 'phone number'} on file for this ${refType}.`,
-        };
-      } else if (!body) {
-        outcome = { status: 'failed', reason: 'Message body is no longer available to send.' };
-      } else {
-        outcome = await send(channel, address, asString(doc.get('subject')), body, appOrigin);
-      }
-
-      const decision = decideNext(outcome, attempts, now);
-
-      await doc.ref.update({
-        status: decision.status,
-        failureReason: decision.failureReason,
-        attempts: FieldValue.increment(1),
-        nextAttemptAt: decision.nextAttemptAt,
-        ...(decision.status === 'sent'
-          ? {
-              sentAt: now,
-              // Body deleted on success: the provider is the system of record
-              // from here on, and the log keeps its preview (Doc 14 §19).
-              pendingBody: FieldValue.delete(),
-            }
-          : {}),
-        ...(decision.status === 'failed' ? { pendingBody: FieldValue.delete() } : {}),
-        updatedAt: now,
-        updatedBy: 'system',
-      });
-
-      if (decision.status === 'sent') summary.sent += 1;
-      else if (decision.status === 'failed') summary.failed += 1;
-      else summary.requeued += 1;
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('dispatchQueuedCommunications: row failed, leaving it queued for retry', {
-        communicationId: doc.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      summary.skipped += 1;
-    }
+    summary[await processRow(doc, now, appOrigin, branding.emailLogoUrl)] += 1;
   }
 
+  return summary;
+}
+
+/**
+ * Dispatches exactly the row just written by the send action, immediately —
+ * not a slice of whatever else happens to be queued. `dispatchQueuedCommunications`'s
+ * `limit(BATCH_SIZE)` has no ordering, so on a backlog bigger than
+ * `BATCH_SIZE` a fresh message is not guaranteed a slot in any given pass and
+ * could sit for several 5-minute scheduler cycles before it is finally
+ * examined. Targeting the one row this caller just created removes that
+ * chance entirely, while leaving the scheduled sweep's bulk-drain/retry role
+ * untouched for everything else.
+ */
+export async function dispatchOneCommunication(
+  communicationId: string,
+  now: Date = new Date(),
+  appOrigin = 'https://terranextglobal.com',
+): Promise<DispatchSummary> {
+  const summary: DispatchSummary = { examined: 0, sent: 0, failed: 0, requeued: 0, skipped: 0 };
+
+  const doc = await adminDb().collection('communications').doc(communicationId).get();
+  if (!doc.exists) return summary;
+  if (doc.get('status') !== 'queued' || doc.get('direction') !== 'outbound') return summary;
+
+  const branding = await getBrandingSettings();
+  summary.examined = 1;
+  summary[await processRow(doc, now, appOrigin, branding.emailLogoUrl)] += 1;
   return summary;
 }

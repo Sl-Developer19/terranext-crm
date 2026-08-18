@@ -1,0 +1,35 @@
+[
+  {
+    "path": "/*",
+    "timings": [
+      { "metric": "interactive", "budget": 2000 },
+      { "metric": "largest-contentful-paint", "budget": 2000 }
+    ],
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 300 },
+      { "resourceType": "total", "budget": 600 }
+    ]
+  },
+  {
+    "path": "/reports",
+    "timings": [
+      { "metric": "interactive", "budget": 2000 },
+      { "metric": "largest-contentful-paint", "budget": 2000 }
+    ],
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 450 },
+      { "resourceType": "total", "budget": 750 }
+    ]
+  },
+  {
+    "path": "/dashboard",
+    "timings": [
+      { "metric": "interactive", "budget": 2000 },
+      { "metric": "largest-contentful-paint", "budget": 2000 }
+    ],
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 450 },
+      { "resourceType": "total", "budget": 750 }
+    ]
+  }
+]

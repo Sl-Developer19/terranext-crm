@@ -3,7 +3,12 @@ import 'server-only';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { DocumentSnapshot, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
-import { matchActiveRewardRuleInTx, writeRewardInTx } from '@/features/rewards/repository';
+import {
+  clawbackRewardInTx,
+  matchActiveRewardRuleInTx,
+  writeRewardInTx,
+} from '@/features/rewards/repository';
+import { getIdFormats } from '@/features/settings';
 import { adminDb } from '@/lib/firebase/admin';
 
 import {
@@ -21,6 +26,8 @@ import type { FeeAccount, FeeInstallment, PaymentMethod, Payment, PendingFeeRow 
 /** Fee data access (Doc 03 §1.7, ADR-012). */
 
 const RECEIPT_COUNTER = 'receiptNo';
+/** Absolute last-resort fallback only — reached if `settings/idFormats` is
+ * ever unreadable. The real default comes from `getIdFormats().receiptPrefix`. */
 const RECEIPT_PREFIX = 'RCP';
 
 function asString(value: unknown): string {
@@ -257,6 +264,13 @@ export type PaymentOutcome =
  * re-allocate installments from the ledger total. Recomputing rather than
  * incrementing means a retried transaction cannot double-count, and the
  * stored balance is always derivable from the ledger.
+ *
+ * The prior-ledger read (`tx.get(paymentsRef)`) happens *inside* the
+ * transaction so a retry (Firestore retries the whole callback on
+ * contention) recomputes `priorPaid` from a fresh read — reading it outside
+ * the transaction would let a retry reuse a stale total and silently drop a
+ * concurrent payment's contribution, the opposite of the "cannot
+ * double-count" property this function is designed around.
  */
 export async function recordPaymentRecord(
   feeAccountId: string,
@@ -273,20 +287,19 @@ export async function recordPaymentRecord(
   const paymentsRef = accountRef.collection('payments');
   const counterRef = db.collection('counters').doc(RECEIPT_COUNTER);
 
-  // Existing ledger is read outside the transaction (a subcollection query
-  // is not transactional), then the new total is derived inside it from that
-  // snapshot plus this payment. The account document read inside the
-  // transaction is what serialises concurrent payments.
-  const existingLedger = await paymentsRef.get();
-  const priorPaid = sumLedger(
-    existingLedger.docs.map((d) => ({ amountPaise: asNumber(d.get('amountPaise')) })),
-  );
-
   const fy = financialYear(input.receivedAt);
+  // Settings is slow-changing config, read once outside the transaction —
+  // same reasoning as every other ID-prefix reservation in this codebase.
+  const idFormats = await getIdFormats();
 
   return db.runTransaction(async (tx) => {
     const accountSnap = await tx.get(accountRef);
     if (!accountSnap.exists) return { kind: 'account_missing' };
+
+    const existingLedger = await tx.get(paymentsRef);
+    const priorPaid = sumLedger(
+      existingLedger.docs.map((d) => ({ amountPaise: asNumber(d.get('amountPaise')) })),
+    );
 
     const plan = (accountSnap.get('plan') ?? {}) as Record<string, unknown>;
     const totalPaise = asNumber(plan.totalPaise);
@@ -318,9 +331,10 @@ export async function recordPaymentRecord(
     const current =
       counterSnap.exists && storedFy === fy ? asNumber(counterSnap.get('current')) : 0;
     const next = current + 1;
-    const receiptNo = formatReceiptNo(RECEIPT_PREFIX, fy, next);
+    const prefix = idFormats.receiptPrefix || RECEIPT_PREFIX;
+    const receiptNo = formatReceiptNo(prefix, fy, next);
 
-    tx.set(counterRef, { current: next, prefix: RECEIPT_PREFIX, year: fy }, { merge: true });
+    tx.set(counterRef, { current: next, prefix, year: fy }, { merge: true });
 
     const paymentRef = paymentsRef.doc();
     tx.set(paymentRef, {
@@ -383,6 +397,13 @@ export async function recordPaymentRecord(
  * Reverses a payment with a compensating negative entry (Doc 03 §1.7:
  * payments are append-only — a correction is a new entry, never an edit or
  * a delete, so the ledger remains a complete record of what happened).
+ *
+ * Also claws back any reward the reversed payment earned (Doc 25 §10),
+ * inside the same transaction — a bounced/refunded payment must not leave a
+ * Growth Partner holding a reward for money the organisation no longer has.
+ * The ledger read that computes `priorPaid` runs inside the transaction for
+ * the same reason as `recordPaymentRecord`: a retry must recompute from a
+ * fresh read, not reuse a total captured before the transaction started.
  */
 export async function reversePaymentRecord(
   feeAccountId: string,
@@ -393,20 +414,24 @@ export async function reversePaymentRecord(
   const db = adminDb();
   const accountRef = db.collection('feeAccounts').doc(feeAccountId);
   const paymentsRef = accountRef.collection('payments');
+  const originalRef = paymentsRef.doc(paymentId);
 
-  const original = await paymentsRef.doc(paymentId).get();
-  if (!original.exists) return 'not_found';
-  if (asStringOrNull(original.get('reversedByPaymentId'))) return 'already_reversed';
-
-  const ledger = await paymentsRef.get();
-  const priorPaid = sumLedger(
-    ledger.docs.map((d) => ({ amountPaise: asNumber(d.get('amountPaise')) })),
-  );
-  const amount = asNumber(original.get('amountPaise'));
   const now = new Date();
 
-  await db.runTransaction(async (tx) => {
+  const outcome = await db.runTransaction(async (tx) => {
+    const original = await tx.get(originalRef);
+    if (!original.exists) return 'not_found' as const;
+    if (asStringOrNull(original.get('reversedByPaymentId'))) return 'already_reversed' as const;
+
     const accountSnap = await tx.get(accountRef);
+    const ledger = await tx.get(paymentsRef);
+    const priorPaid = sumLedger(
+      ledger.docs.map((d) => ({ amountPaise: asNumber(d.get('amountPaise')) })),
+    );
+    const amount = asNumber(original.get('amountPaise'));
+
+    await clawbackRewardInTx(tx, paymentId);
+
     const plan = (accountSnap.get('plan') ?? {}) as Record<string, unknown>;
     const totalPaise = asNumber(plan.totalPaise);
     const discountPaise = asNumber(plan.discountPaise);
@@ -438,9 +463,11 @@ export async function reversePaymentRecord(
       updatedAt: now,
       updatedBy: actorUid,
     });
+
+    return 'reversed' as const;
   });
 
-  return 'reversed';
+  return outcome;
 }
 
 export async function applyDiscountRecord(

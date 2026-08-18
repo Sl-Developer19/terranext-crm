@@ -11,11 +11,14 @@ import {
   getAiSettings,
   SESSION_STATUS_KIND,
   SESSION_STATUS_LABELS,
+  SessionAssistant,
+  SessionAudioPlayer,
   SessionRecorder,
   SessionTimeline,
   SummaryView,
   TranscriptView,
   formatDuration,
+  getSessionChatMessages,
   getSessionDetail,
 } from '@/features/ai-intelligence';
 import { requirePermission } from '@/lib/rbac/require';
@@ -38,6 +41,7 @@ export default async function AiSessionDetailPage({
 
   const isProcessing = session.status === 'processing';
   const settings = session.status === 'draft' ? await getAiSettings() : null;
+  const chatMessages = session.status === 'completed' ? await getSessionChatMessages(id) : [];
 
   return (
     <div className="space-y-6">
@@ -58,23 +62,17 @@ export default async function AiSessionDetailPage({
       <SessionRecorder
         session={session}
         defaultRecordingSource={settings?.defaultRecordingSource ?? 'laptop_microphone'}
+        channelRoleMap={settings?.channelRoleMap ?? []}
       />
 
-      {session.status === 'recording' || session.status === 'paused' ? (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            This session is {session.status === 'paused' ? 'paused' : 'recording'} in a browser tab.
-            Recording controls (Pause, Resume, Stop) only work in the tab where{' '}
-            <strong className="font-medium text-foreground">Start recording</strong> was clicked —
-            if that tab was closed or this page was refreshed, it can&apos;t be controlled from
-            here. Anything already uploaded is safely saved; if this session is stuck, a System
-            Administrator can remove it without losing the recording, transcript, or summary
-            generated so far.
-          </CardContent>
-        </Card>
-      ) : null}
-
       <SessionTimeline session={session} />
+
+      {/* Recording has been finalized (Stop already ran) — the audio is in
+          Storage regardless of how processing/transcription turns out, so
+          playback works for a still-processing, completed, or even failed
+          session alike (§13: a transcription/summary failure must never
+          make the recording itself unreachable). */}
+      {session.totalChunks !== null ? <SessionAudioPlayer sessionId={session.id} /> : null}
 
       {isProcessing ? (
         <Card>
@@ -117,16 +115,24 @@ export default async function AiSessionDetailPage({
       ) : null}
 
       {session.status === 'completed' ? (
-        <Tabs defaultValue={tab === 'transcript' ? 'transcript' : 'summary'}>
+        <Tabs
+          defaultValue={
+            tab === 'transcript' ? 'transcript' : tab === 'assistant' ? 'assistant' : 'summary'
+          }
+        >
           <TabsList>
             <TabsTrigger value="summary">Summary</TabsTrigger>
             <TabsTrigger value="transcript">Transcript</TabsTrigger>
+            <TabsTrigger value="assistant">AI Assistant</TabsTrigger>
           </TabsList>
           <TabsContent value="summary">
             <SummaryView summary={summary} />
           </TabsContent>
           <TabsContent value="transcript">
             <TranscriptView transcript={transcript} />
+          </TabsContent>
+          <TabsContent value="assistant">
+            <SessionAssistant sessionId={session.id} initialMessages={chatMessages} />
           </TabsContent>
         </Tabs>
       ) : null}

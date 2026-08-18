@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { format } from 'date-fns';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -55,12 +56,13 @@ const ACTION_KIND: Record<AuditAction, StatusKind> = {
   migration: 'neutral',
 };
 
+// `date-fns` rather than `Intl.DateTimeFormat`: the latter's output depends
+// on the runtime's ICU data, which can differ between Node's server-side
+// render and the browser's — a hydration mismatch every other relative/
+// absolute timestamp in the app already avoids by using `date-fns` instead.
 function formatAt(iso: string): string {
   try {
-    return new Intl.DateTimeFormat('en-IN', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(iso));
+    return format(new Date(iso), 'd MMM yyyy, h:mm a');
   } catch {
     return iso;
   }

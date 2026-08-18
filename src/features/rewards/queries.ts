@@ -18,14 +18,29 @@ function toIso(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
+/** A `partnerId` can belong to either `growthPartners` (individual) or
+ * `communityPartners` (business) — the reward engine is kind-agnostic
+ * (ADR-014, TCGN), so the leaderboard/report name lookup must be too. Tries
+ * the individual collection first, then the business one, same shape as
+ * `leads/queries.ts`'s `resolvePartnerNames`. */
 async function resolvePartnerNames(ids: unknown[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids.filter((v): v is string => typeof v === 'string'))];
   const map = new Map<string, string>();
   await Promise.all(
     unique.map(async (id) => {
-      const snap = await adminDb().collection('growthPartners').doc(id).get();
-      const name = snap.get('displayName');
-      map.set(id, typeof name === 'string' ? name : id);
+      const gpSnap = await adminDb().collection('growthPartners').doc(id).get();
+      if (gpSnap.exists) {
+        const name = gpSnap.get('displayName');
+        map.set(id, typeof name === 'string' ? name : id);
+        return;
+      }
+      const cpSnap = await adminDb().collection('communityPartners').doc(id).get();
+      if (cpSnap.exists) {
+        const name = cpSnap.get('orgName');
+        map.set(id, typeof name === 'string' ? name : id);
+        return;
+      }
+      map.set(id, id);
     }),
   );
   return map;

@@ -93,6 +93,61 @@ export function GeneralSettingsForm({ defaultValues }: { defaultValues: GeneralS
           />
           {errors.website && <p className="text-xs text-destructive">{errors.website.message}</p>}
         </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-gst">GST number</Label>
+          <Input id="settings-gst" {...register('gstNumber')} placeholder="22AAAAA0000A1Z5" />
+          {errors.gstNumber && (
+            <p className="text-xs text-destructive">{errors.gstNumber.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-pan">PAN number</Label>
+          <Input id="settings-pan" {...register('panNumber')} placeholder="ABCDE1234F" />
+          {errors.panNumber && (
+            <p className="text-xs text-destructive">{errors.panNumber.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="settings-google-maps">Google Maps link</Label>
+          <Input
+            id="settings-google-maps"
+            type="url"
+            {...register('googleMapsUrl')}
+            placeholder="https://maps.google.com/?q=..."
+          />
+          {errors.googleMapsUrl && (
+            <p className="text-xs text-destructive">{errors.googleMapsUrl.message}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-3 border-t border-border pt-5">
+        <h3 className="text-sm font-semibold">Social media</h3>
+        <div className="grid gap-5 sm:grid-cols-2">
+          {(['facebook', 'instagram', 'linkedin', 'twitter', 'youtube'] as const).map(
+            (platform) => (
+              <div key={platform} className="space-y-1.5">
+                <Label htmlFor={`settings-social-${platform}`} className="capitalize">
+                  {platform}
+                </Label>
+                <Input
+                  id={`settings-social-${platform}`}
+                  type="url"
+                  {...register(`socialLinks.${platform}`)}
+                  placeholder={`https://${platform}.com/...`}
+                />
+                {errors.socialLinks?.[platform] && (
+                  <p className="text-xs text-destructive">
+                    {errors.socialLinks[platform]?.message}
+                  </p>
+                )}
+              </div>
+            ),
+          )}
+        </div>
       </div>
 
       <div className="flex justify-end">

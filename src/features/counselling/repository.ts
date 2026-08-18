@@ -95,6 +95,9 @@ function toSession(
         : null,
     outcome: (asString(data.outcome) || 'follow_up') as SessionOutcome,
     createdAt: toIso(data.createdAt),
+    createdBy: asString(data.createdBy),
+    updatedAt: toIso(data.updatedAt) || toIso(data.createdAt),
+    updatedBy: asString(data.updatedBy) || asString(data.createdBy),
   };
 }
 
@@ -178,9 +181,51 @@ export async function createSessionRecord(
   return ref.id;
 }
 
+export interface SessionUpdateModel {
+  heldAt: Date;
+  mode: SessionMode;
+  outcome: SessionOutcome;
+  notes: string;
+  needsAssessment: string | null;
+  recommendation: { programmeId: string; remarks: string | null } | null;
+}
+
+/** Metadata needed by the update action before it writes anything —
+ * confirms the record exists and carries its `leadId` forward (never
+ * editable) without touching `createdAt`/`createdBy` at all. */
+export async function findSessionMeta(sessionId: string): Promise<{ leadId: string } | null> {
+  const snap = await adminDb().collection('counsellingSessions').doc(sessionId).get();
+  if (!snap.exists) return null;
+  return { leadId: asString(snap.get('leadId')) };
+}
+
+/**
+ * Updates an existing session in place (Edit button, Held Sessions table).
+ * A partial `.update()` that only ever touches the editable fields plus
+ * `updatedAt`/`updatedBy` — `id`, `leadId`, `consultantUid`, `createdAt`,
+ * and `createdBy` are never in this payload, so they cannot be
+ * accidentally overwritten no matter what the caller passes.
+ */
+export async function updateSessionRecord(
+  sessionId: string,
+  input: SessionUpdateModel,
+  actorUid: string,
+): Promise<void> {
+  await adminDb().collection('counsellingSessions').doc(sessionId).update({
+    heldAt: input.heldAt,
+    mode: input.mode,
+    outcome: input.outcome,
+    notes: input.notes,
+    needsAssessment: input.needsAssessment,
+    recommendation: input.recommendation,
+    updatedAt: new Date(),
+    updatedBy: actorUid,
+  });
+}
+
 export async function leadExists(leadId: string): Promise<boolean> {
   const snap = await adminDb().collection('leads').doc(leadId).get();
-  return snap.exists;
+  return snap.exists && snap.get('deletedAt') === null;
 }
 
 export async function programmeExists(programmeId: string): Promise<boolean> {

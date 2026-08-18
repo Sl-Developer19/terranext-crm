@@ -88,6 +88,36 @@ export function IdFormatsForm({ defaultValues }: { defaultValues: IdFormatsInput
         </div>
       </div>
 
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-community-partner-prefix">Community Partner ID prefix</Label>
+          <Input
+            id="settings-community-partner-prefix"
+            {...register('communityPartnerPrefix')}
+            placeholder="TCGN"
+            className="font-mono uppercase"
+          />
+          <p className="text-xs text-muted-foreground">e.g. TCGN → TCGN-000001</p>
+          {errors.communityPartnerPrefix && (
+            <p className="text-xs text-destructive">{errors.communityPartnerPrefix.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="settings-growth-partner-prefix">Growth Partner ID prefix</Label>
+          <Input
+            id="settings-growth-partner-prefix"
+            {...register('growthPartnerPrefix')}
+            placeholder="TGP"
+            className="font-mono uppercase"
+          />
+          <p className="text-xs text-muted-foreground">e.g. TGP → TGP-000001</p>
+          {errors.growthPartnerPrefix && (
+            <p className="text-xs text-destructive">{errors.growthPartnerPrefix.message}</p>
+          )}
+        </div>
+      </div>
+
       <div className="flex justify-end">
         <Button type="submit" disabled={!isDirty || isSubmitting} id="settings-idformats-save-btn">
           {isSubmitting ? 'Saving…' : 'Save ID formats'}

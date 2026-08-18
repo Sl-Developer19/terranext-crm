@@ -90,6 +90,8 @@ export function CatalogueView({
                     <TableHead>Programme</TableHead>
                     <TableHead>Academy</TableHead>
                     <TableHead>Duration</TableHead>
+                    <TableHead>Intake</TableHead>
+                    <TableHead>Capacity</TableHead>
                     <TableHead>BR-03 gate</TableHead>
                     <TableHead>Default fee</TableHead>
                     <TableHead>Status</TableHead>
@@ -109,12 +111,39 @@ export function CatalogueView({
                       <TableCell className="text-sm text-muted-foreground">
                         {programme.durationDays}d · {programme.sessionCount} sessions
                       </TableCell>
+                      <TableCell>
+                        <StatusBadge
+                          kind={
+                            programme.intakeStatus === 'open'
+                              ? 'success'
+                              : programme.intakeStatus === 'waitlist'
+                                ? 'info'
+                                : 'neutral'
+                          }
+                          label={
+                            programme.intakeStatus === 'open'
+                              ? 'Open'
+                              : programme.intakeStatus === 'waitlist'
+                                ? 'Waitlist'
+                                : 'Closed'
+                          }
+                        />
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {programme.certificateRules.minAttendancePct}% attendance ·{' '}
-                        {programme.certificateRules.minAssessmentScore} score
+                        {programme.capacity ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {programme.certificateEnabled ? (
+                          <>
+                            {programme.certificateRules.minAttendancePct}% attendance ·{' '}
+                            {programme.certificateRules.minAssessmentScore} score
+                          </>
+                        ) : (
+                          <span className="italic">Certificates disabled</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {formatPaise(programme.feePlanDefault.totalPaise)}
+                        {formatPaise(programme.feePlanDefault.totalPaise)} {programme.currency}
                         {programme.feePlanDefault.installments.length > 0 ? (
                           <span className="text-xs text-muted-foreground">
                             {' '}
@@ -170,6 +199,7 @@ export function CatalogueView({
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Order</TableHead>
                     <TableHead>Academy</TableHead>
                     <TableHead>Slug</TableHead>
                     <TableHead>Programmes</TableHead>
@@ -180,8 +210,20 @@ export function CatalogueView({
                 <TableBody>
                   {academies.map((academy) => (
                     <TableRow key={academy.id}>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {academy.displayOrder}
+                      </TableCell>
                       <TableCell>
-                        <div className="font-medium">{academy.name}</div>
+                        <div className="flex items-center gap-2">
+                          {academy.themeColor ? (
+                            <span
+                              aria-hidden
+                              className="size-3 shrink-0 rounded-full border border-border"
+                              style={{ backgroundColor: academy.themeColor }}
+                            />
+                          ) : null}
+                          <div className="font-medium">{academy.name}</div>
+                        </div>
                         {academy.description ? (
                           <div className="max-w-md truncate text-xs text-muted-foreground">
                             {academy.description}

@@ -7,7 +7,8 @@ import { siteConfig } from '@/config/site';
 
 export const metadata: Metadata = { title: 'Partner Sign in' };
 
-/** Doc 25, ADR-014 — Growth Partner portal entry point. */
+/** Doc 25, ADR-014 — Partner portal entry point, shared by individual Growth
+ * Partners and TCGN Community Partners alike (Feature 5). */
 export default function PartnerLoginPage() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
@@ -24,7 +25,7 @@ export default function PartnerLoginPage() {
         <div className="flex flex-col items-center text-center">
           <Logo size="xl" wordmark={false} className="mb-4" />
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-            Growth Partner Portal
+            Partner Portal
           </p>
           <h1 className="mt-2 font-heading text-2xl font-semibold text-foreground">
             {siteConfig.name}

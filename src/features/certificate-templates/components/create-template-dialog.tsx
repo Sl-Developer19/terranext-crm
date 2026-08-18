@@ -68,6 +68,10 @@ export function CreateTemplateDialog({
     toast.success('Template created as a draft.');
     setOpen(false);
     reset();
+    // Refresh before navigating away so the list route's cached RSC payload
+    // isn't stale if the user comes back via the back button (the same
+    // pattern BatchDialog/AssessmentDialog use for their own list pages).
+    router.refresh();
     router.push(`/admin/settings/certificate-templates/${result.data.templateId}`);
   }
 

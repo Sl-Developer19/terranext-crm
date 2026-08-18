@@ -32,12 +32,18 @@ Per-collection access truth table. This document is the human-readable contract 
 | `certificates` | all staff | **AdminSDK only** (BR-03 recompute) | AdminSDK (revoke: ops approve + override reason) | ops, founder | criteria snapshot immutable |
 | `careerProfiles` (+guidanceSessions) | placement, ops, founder; participant-scoped fields to others per projection | placement | placement; eligibility change requires evaluatedBy/At/note together (BR-09) | placement, founder | — |
 | `employers` | placement, ops, founder (others view) | placement | placement | — | — |
-| `placements` | placement, ops, founder | **AdminSDK** (eligibility gate BR-09) | placement (status advance via action); `feeDisclosure.terranextFeePaise == 0` always (BR-08) | placement, founder | statusHistory append-shape validated |
+| `placements` | placement, ops, founder | **AdminSDK** (eligibility gate BR-09) | **AdminSDK** (blanket `write: if false` — status advance via server action, not a client rule path) | placement, founder | statusHistory append-shape validated server-side; BR-08's `terranextFeePaise == 0` is schema/server-enforced today, not a rules field constraint (safe only because of the blanket deny — see inline rule comment) |
 | `alumniRecords` | ops, founder, placement, coordinator | **AdminSDK** (trigger BR-05; override system_admin + reason) | ops (engagement, consent — audited) | ops, founder | — |
 | `feeAccounts` | finance, ops, founder | **AdminSDK** (created with enrolment) | **AdminSDK** (payment transaction maintains balances); discount path requires approver role in action | finance, founder | clients never write amounts (threat T-2, Doc 10 §5) |
 | `feeAccounts/*/payments` | finance, ops, founder | **AdminSDK** (recordPayment) | **false** (append-only ledger; corrections = reversing entries) | finance, founder | receiptNo from counter |
 | `communications` | staff per Doc 04 scope | AdminSDK (send pipeline) + staff manual-log create (`byUid == uid`) | AdminSDK (status transitions queued→sent/failed) | ops, founder | log-before-send (FR-10.3) |
 | `stats/*` (M8) | all staff (role-scoped docs) | AdminSDK (triggers) | AdminSDK | — | display aggregates only |
+| `growthPartners` (GPMS, Doc 25/ADR-014) | staff with `growthPartners:view`; partner: own record only (`isPartner() && partnerId==resource.id`) | AdminSDK (registerGrowthPartner) | AdminSDK (decide/setStatus); partner: `updateOwnProfile` fields only | ops, founder | `status`/`authUid` never client-writable, including by the owning partner |
+| `rewardRules` | staff with `rewards:view`; **all partners** (read-only, to see active rules) | AdminSDK (system_admin/founder configure) | AdminSDK | — | partner read is intentional (transparency), never write |
+| `rewardLedger` | staff with `rewards:view`; partner: `partnerId==own` rows only | **AdminSDK only** (recordPayment transaction) | **false** (append-only) | finance, founder | never client-writable by partner, including their own entries |
+| `wallets` (+`transactions`) | staff with `rewards:view`; partner: own wallet only (`isPartner() && partnerId==resource.id`/doc id) | **AdminSDK only** | **AdminSDK only** (same transaction as ledger/payout) | finance, founder | balance never a bare client write — always the reward/payout transaction |
+| `payoutRequests` | staff with `rewards:view`; partner: `partnerId==own` | **AdminSDK only** (`requestPayout` action, amount ≤ wallet balance checked server-side) | **AdminSDK only** (`decidePayout`: approve/reject/paid, wallet debited in same transaction) | finance, founder | write is `false` for every client incl. the requesting partner (Doc 25 §5: partners never write Firestore directly) |
+| `partnerNotifications/{partnerId}/items` | partner: own `partnerId` only | AdminSDK | AdminSDK (mark-read) | — | staff have no oversight read (partner-private) |
 
 ## Deny-test obligations (CI)
 

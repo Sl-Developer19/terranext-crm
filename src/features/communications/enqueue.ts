@@ -2,7 +2,7 @@ import 'server-only';
 
 import { adminDb } from '@/lib/firebase/admin';
 
-import { dispatchQueuedCommunications } from './dispatch';
+import { dispatchOneCommunication } from './dispatch';
 import { toBodyPreview } from './logic';
 import type { Channel, RefType } from './schema';
 import { findTemplate } from './templates';
@@ -44,7 +44,7 @@ export async function enqueueTemplatedMessage(options: {
   if (!existing.empty) return 'already_queued';
 
   const now = new Date();
-  await db.collection('communications').add({
+  const ref = await db.collection('communications').add({
     schemaVersion: 1,
     branchId: options.branchId,
     channel: options.channel ?? template.channel,
@@ -70,10 +70,11 @@ export async function enqueueTemplatedMessage(options: {
   // Fire-and-forget: the caller (lead creation, certificate issuance) must
   // not wait on a provider round-trip to finish its own request. The
   // scheduled worker (Doc 19 §4) still owns retry/backoff for anything this
-  // attempt misses; this just closes the gap between "queued" and the next
-  // scheduled sweep for the common case.
+  // attempt misses; targeting this row specifically (rather than the batch
+  // sweep) means it is attempted immediately regardless of how much else is
+  // already queued.
   // eslint-disable-next-line no-console
-  dispatchQueuedCommunications().catch((error) =>
+  dispatchOneCommunication(ref.id).catch((error) =>
     console.error('enqueueTemplatedMessage: immediate dispatch attempt failed', error),
   );
 

@@ -39,20 +39,39 @@ export async function createRewardRule(
   const data = parsed.data;
 
   try {
-    const ref = adminDb().collection('rewardRules').doc();
+    const db = adminDb();
+    const ref = db.collection('rewardRules').doc();
     const now = new Date();
-    await ref.set({
-      schemaVersion: 1,
-      kind: data.kind,
-      programmeId: data.programmeId,
-      amountPaise: data.kind === 'flat' ? data.amountPaise : null,
-      percentBps: data.kind === 'percent' ? data.percentBps : null,
-      active: true,
-      effectiveFrom: new Date(data.effectiveFrom),
-      createdAt: now,
-      createdBy: session.uid,
-      updatedAt: now,
-      updatedBy: session.uid,
+
+    // Reward matching (`matchActiveRewardRuleInTx`) picks *a* single active
+    // rule per programme with `.limit(1)` — if two ever coexisted, which one
+    // wins would be undefined. Deactivating every existing active rule for
+    // the same programme (including the universal `null` scope) in the same
+    // transaction as the create is what actually enforces "one active rule
+    // per programme," not just documents it.
+    await db.runTransaction(async (tx) => {
+      const siblings = await tx.get(
+        db
+          .collection('rewardRules')
+          .where('programmeId', '==', data.programmeId)
+          .where('active', '==', true),
+      );
+      for (const doc of siblings.docs) {
+        tx.update(doc.ref, { active: false, updatedAt: now, updatedBy: session.uid });
+      }
+      tx.set(ref, {
+        schemaVersion: 1,
+        kind: data.kind,
+        programmeId: data.programmeId,
+        amountPaise: data.kind === 'flat' ? data.amountPaise : null,
+        percentBps: data.kind === 'percent' ? data.percentBps : null,
+        active: true,
+        effectiveFrom: new Date(data.effectiveFrom),
+        createdAt: now,
+        createdBy: session.uid,
+        updatedAt: now,
+        updatedBy: session.uid,
+      });
     });
 
     await writeAudit({
@@ -83,12 +102,40 @@ export async function setRewardRuleActive(
   if (!parsed.success) return validationError({ form: 'Invalid input.' });
   const { ruleId, active } = parsed.data;
 
-  const ref = adminDb().collection('rewardRules').doc(ruleId);
-  const snap = await ref.get();
-  if (!snap.exists) return notFoundError('Reward rule not found.');
-  const before = snap.get('active') === true;
+  const db = adminDb();
+  const ref = db.collection('rewardRules').doc(ruleId);
+  const now = new Date();
 
-  await ref.update({ active, updatedAt: new Date(), updatedBy: session.uid });
+  let before: boolean;
+  try {
+    before = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('not_found');
+      const wasActive = snap.get('active') === true;
+      const programmeId = snap.get('programmeId') as string | null;
+
+      // Same invariant as create above: activating this rule must not leave
+      // a sibling active for the same programme.
+      if (active) {
+        const siblings = await tx.get(
+          db
+            .collection('rewardRules')
+            .where('programmeId', '==', programmeId)
+            .where('active', '==', true),
+        );
+        for (const doc of siblings.docs) {
+          if (doc.id !== ruleId) {
+            tx.update(doc.ref, { active: false, updatedAt: now, updatedBy: session.uid });
+          }
+        }
+      }
+
+      tx.update(ref, { active, updatedAt: now, updatedBy: session.uid });
+      return wasActive;
+    });
+  } catch {
+    return notFoundError('Reward rule not found.');
+  }
 
   await writeAudit({
     actorUid: session.uid,

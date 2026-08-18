@@ -12,7 +12,7 @@ import {
   type Result,
 } from '@/lib/utils/result';
 
-import { dispatchQueuedCommunications } from '../dispatch';
+import { dispatchOneCommunication } from '../dispatch';
 import { toBodyPreview } from '../logic';
 import { createCommunicationRecord, refExists } from '../repository';
 import {
@@ -34,10 +34,12 @@ function fieldErrors(issues: { path: (string | number)[]; message: string }[]) {
 /**
  * FR-10.3 log-before-send: the doc lands as `queued` and the provider hand-off
  * is a separate step. The scheduled worker (Doc 19 §4) is the durable sweep —
- * it retries with backoff and is what production relies on — but this action
- * also attempts an immediate dispatch pass so a sender sees the true outcome
- * without waiting on Cloud Scheduler, and so this call doubles as a recovery
- * sweep for anything left over from a period the scheduled job wasn't reachable.
+ * it retries with backoff and is what production relies on for the rest of
+ * the queue — but this action also dispatches the row it just wrote
+ * immediately (`dispatchOneCommunication`, not the batch sweep) so a sender
+ * sees the true outcome on this same request without waiting on Cloud
+ * Scheduler's next 5-minute tick, and without competing with whatever else is
+ * already queued for one of the batch sweep's limited slots.
  */
 export async function sendCommunication(
   input: SendCommunicationInput,
@@ -88,10 +90,11 @@ export async function sendCommunication(
       context: { feature: 'communications' },
     });
 
-    // Best-effort immediate delivery. A failure here must never turn an
-    // already-recorded, already-audited message into an error response — the
-    // row stays `queued` and the scheduled worker retries it regardless.
-    await dispatchQueuedCommunications().catch(() => undefined);
+    // Best-effort immediate delivery of exactly this message. A failure here
+    // must never turn an already-recorded, already-audited message into an
+    // error response — the row stays `queued` and the scheduled worker
+    // retries it regardless.
+    await dispatchOneCommunication(communicationId).catch(() => undefined);
 
     return ok({ communicationId });
   } catch {

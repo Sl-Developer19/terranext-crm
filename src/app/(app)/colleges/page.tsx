@@ -22,7 +22,11 @@ export default async function CollegesPage() {
       />
       <Card>
         <CardContent>
-          <CollegesTable colleges={colleges} canManage={can(session.role, 'colleges:update')} />
+          {/* College-master edit/archive is create-level (ops_manager/founder) —
+              consultant's `colleges:update` grant is leaders-only (Doc 04/18);
+              matches the same restriction enforced server-side in
+              `updateCollege`/`setCollegeStatus` (features/colleges/actions). */}
+          <CollegesTable colleges={colleges} canManage={can(session.role, 'colleges:create')} />
         </CardContent>
       </Card>
     </div>

@@ -3,6 +3,7 @@
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
 import { can } from '@/lib/rbac/permissions';
+import type { StaffRole } from '@/types/common';
 import {
   conflictError,
   internalError,
@@ -44,6 +45,22 @@ function fieldErrors(issues: { path: (string | number)[]; message: string }[]) {
   return fields;
 }
 
+/**
+ * `colleges:update` is one grant shared by two very different mutations:
+ * editing the college master record (name/city/contact) and managing its
+ * campus-leader sub-entities. Doc 04/18 document consultant's grant as
+ * "leaders only," but the coarse `Module × Action` permission model has no
+ * sub-resource scope to express that — so without this explicit check,
+ * `updateCollege`/`setCollegeStatus` would let a consultant rewrite college
+ * master data the docs (and the two-person design intent) say they cannot.
+ * Restricting here, in the two master-record actions only, closes the gap
+ * without widening the shared permission matrix (Doc 04 §3 changes are a
+ * Tier 1 review, not a fix to bolt on unreviewed).
+ */
+function canEditCollegeMaster(role: StaffRole): boolean {
+  return can(role, 'colleges:create');
+}
+
 export async function createCollege(input: CollegeInput): Promise<Result<{ collegeId: string }>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
@@ -80,6 +97,7 @@ export async function updateCollege(input: UpdateCollegeInput): Promise<Result<{
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
   if (!can(session.role, 'colleges:update')) return permissionError();
+  if (!canEditCollegeMaster(session.role)) return permissionError();
 
   const parsed = updateCollegeSchema.safeParse(input);
   if (!parsed.success) return validationError(fieldErrors(parsed.error.issues));
@@ -119,6 +137,7 @@ export async function setCollegeStatus(
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
   if (!can(session.role, 'colleges:update')) return permissionError();
+  if (!canEditCollegeMaster(session.role)) return permissionError();
 
   const parsed = setCollegeStatusSchema.safeParse(input);
   if (!parsed.success) return validationError(fieldErrors(parsed.error.issues));

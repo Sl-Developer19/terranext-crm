@@ -181,17 +181,31 @@ export async function loadPlacementFunnel(): Promise<PlacementFunnelInput> {
   return { evaluated, eligible, placed };
 }
 
-/** Doc 25 §13/§15 — every reward ledger entry, org-wide, with the partner name joined in. */
+/** Doc 25 §13/§15 — every reward ledger entry, org-wide, with the partner name joined in.
+ * `partnerId` can belong to either `growthPartners` (individual) or
+ * `communityPartners` (business) — the reward engine is kind-agnostic
+ * (ADR-014, TCGN) — so both collections are checked per id, individual
+ * first, same shape as `leads/queries.ts`'s `resolvePartnerNames`. */
 export async function loadGrowthPartnerRewards(): Promise<GrowthPartnerRewardInput[]> {
   const snap = await adminDb().collection('rewardLedger').limit(SCAN_CAP).get();
   const partnerIds = [...new Set(snap.docs.map((d) => asString(d.get('partnerId'))))].filter(
     (id) => id.length > 0,
   );
-  const partnerDocs = await Promise.all(
-    partnerIds.map((id) => adminDb().collection('growthPartners').doc(id).get()),
-  );
-  const partnerNames = new Map(
-    partnerDocs.map((d) => [d.id, asString(d.get('displayName')) || d.id]),
+  const partnerNames = new Map<string, string>();
+  await Promise.all(
+    partnerIds.map(async (id) => {
+      const gpSnap = await adminDb().collection('growthPartners').doc(id).get();
+      if (gpSnap.exists) {
+        partnerNames.set(id, asString(gpSnap.get('displayName')) || id);
+        return;
+      }
+      const cpSnap = await adminDb().collection('communityPartners').doc(id).get();
+      if (cpSnap.exists) {
+        partnerNames.set(id, asString(cpSnap.get('orgName')) || id);
+        return;
+      }
+      partnerNames.set(id, id);
+    }),
   );
 
   return snap.docs.map((doc) => {

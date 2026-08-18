@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { findAssistantMessages } from './assistant/repository';
+import type { AssistantMessage } from './assistant/schema';
 import {
   findAiSettings,
   findDashboardStats,
@@ -54,4 +56,8 @@ export async function getRecentAnalytics(days = 30): Promise<AiAnalyticsDay[]> {
 
 export async function getAiSettings(): Promise<AiIntelligenceSettings> {
   return findAiSettings();
+}
+
+export async function getSessionChatMessages(sessionId: string): Promise<AssistantMessage[]> {
+  return findAssistantMessages(sessionId);
 }

@@ -37,6 +37,10 @@ export function rankPartnersByRewards(
 ): LeaderboardEntry[] {
   const totals = new Map<string, { partnerName: string; totalPaise: number }>();
   for (const entry of entries) {
+    // Accrued + paid only, per the leaderboard's own stated scope above — a
+    // clawed-back reward was reversed (the wallet was debited back to zero
+    // for it), so it must not still count toward the partner's ranking.
+    if (entry.status === 'clawed_back') continue;
     const existing = totals.get(entry.partnerId) ?? {
       partnerName: entry.partnerName,
       totalPaise: 0,

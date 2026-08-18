@@ -7,6 +7,20 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "crm-dev-emulator",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3001,
+      "autoPort": true,
+      "env": {
+        "NEXT_PUBLIC_USE_EMULATORS": "true",
+        "FIRESTORE_EMULATOR_HOST": "127.0.0.1:8080",
+        "FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:9099",
+        "FIREBASE_STORAGE_EMULATOR_HOST": "127.0.0.1:9199",
+        "RESEND_API_KEY": ""
+      }
     }
   ]
 }

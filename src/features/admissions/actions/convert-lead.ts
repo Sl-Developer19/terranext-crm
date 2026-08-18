@@ -155,6 +155,10 @@ export async function convertLead(
         warnings.push(
           'The chosen batch no longer exists. The participant is enrolled but unallocated.',
         );
+      } else if (allocation === 'batch_not_accepting') {
+        warnings.push(
+          'The chosen batch stopped accepting allocations before the admission committed. The participant is enrolled but unallocated — allocate them to another batch.',
+        );
       }
     }
 

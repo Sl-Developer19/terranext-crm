@@ -5,6 +5,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { resolveDisplayNames as resolveNames } from '@/lib/firebase/resolve-display-names';
 
+import { isValidTransition } from './logic';
 import type { Placement, PlacementStatus, PlacementStatusEvent } from './schema';
 
 /** Placements pipeline data access (Doc 03 §1.6, Doc 14 §16). Actions own permission + audit. */
@@ -152,17 +153,30 @@ export async function createPlacementRecord(
   return ref.id;
 }
 
+/**
+ * Advances a placement's pipeline stage. Re-checks `isValidTransition`
+ * against the freshly-read status inside the transaction, not just the
+ * action's pre-check — otherwise two concurrent stage-advance calls could
+ * both pass the pre-check against the same stale status and race to apply
+ * two different (possibly conflicting) transitions, same TOCTOU class BR-04
+ * capacity/status checks are already transactional against.
+ */
 export async function advancePlacementRecord(
   placementId: string,
   status: PlacementStatus,
   note: string | null,
   actorUid: string,
-): Promise<void> {
+): Promise<'advanced' | 'not_found' | 'invalid_transition'> {
   const ref = adminDb().collection('placements').doc(placementId);
   const now = new Date();
 
-  await adminDb().runTransaction(async (tx) => {
+  return adminDb().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
+    if (!snap.exists) return 'not_found';
+
+    const currentStatus = snap.get('status') as PlacementStatus;
+    if (!isValidTransition(currentStatus, status)) return 'invalid_transition';
+
     const history = (snap.get('statusHistory') ?? []) as Record<string, unknown>[];
     const nextHistory = [...history, { status, at: now, byUid: actorUid, note }].slice(
       -MAX_STATUS_HISTORY,
@@ -173,5 +187,6 @@ export async function advancePlacementRecord(
       updatedAt: now,
       updatedBy: actorUid,
     });
+    return 'advanced';
   });
 }

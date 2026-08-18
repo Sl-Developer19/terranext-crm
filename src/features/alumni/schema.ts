@@ -27,6 +27,26 @@ export const setConsentSchema = z
   .strict();
 export type SetConsentInput = z.infer<typeof setConsentSchema>;
 
+/**
+ * NextStep (website: post-transformation mentorship, accountability &
+ * progress — "your certificate marks the end of a programme, not the end of
+ * our journey with you"). This is deliberately a single on/off flag, not a
+ * stage/status machine: the website describes NextStep as an ongoing
+ * conversational relationship (Reset/Review/Resolve/Rebuild/Move/Begin
+ * Again), not a pipeline with defined gates, and no fee/eligibility/exit
+ * criteria for it exist anywhere in the source content. Modelling anything
+ * beyond "this alumnus is enrolled in NextStep" here would be inventing
+ * business rules that don't exist yet — same boundary as catalogue
+ * programmes needing real fee/attendance figures before they can be created.
+ */
+export const setNextStepStatusSchema = z
+  .object({
+    participantId: z.string().min(1),
+    enrolled: z.boolean(),
+  })
+  .strict();
+export type SetNextStepStatusInput = z.infer<typeof setNextStepStatusSchema>;
+
 /** BR-05 override path: a manual alumni grant with no triggering certificate. */
 export const createAlumniOverrideSchema = z
   .object({
@@ -49,5 +69,7 @@ export interface AlumniRecord {
   triggeredByCertificateId: string | null;
   engagement: { referrals: number; eventsAttended: number };
   consentForSuccessStory: boolean;
+  /** See `setNextStepStatusSchema` — a single enrolled/not-enrolled flag. */
+  nextStepEnrolled: boolean;
   updatedAt: string;
 }

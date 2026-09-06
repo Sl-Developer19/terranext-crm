@@ -3,7 +3,7 @@
 import { writeAudit } from '@/lib/audit/write';
 import { getSession } from '@/lib/auth/session';
 import { adminBucket } from '@/lib/firebase/admin';
-import { can } from '@/lib/rbac/permissions';
+import { sessionCan } from '@/lib/rbac/permissions';
 import {
   conflictError,
   internalError,
@@ -16,6 +16,7 @@ import {
 
 import { planExpectedChunkKeys, planSessionChunks } from '../logic';
 import {
+  computeUploadedRecordingExtent,
   findChunkMeta,
   findSessionChunks,
   findSessionMeta,
@@ -89,7 +90,7 @@ export async function startSessionRecording(
 ): Promise<Result<{ status: 'recording' }>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
-  if (!can(session.role, 'aiIntelligence:create')) return permissionError();
+  if (!sessionCan(session, 'aiIntelligence:create')) return permissionError();
 
   const parsed = startSessionRecordingSchema.safeParse(input);
   if (!parsed.success) return validationError({ sessionId: 'Invalid session reference.' });
@@ -127,7 +128,7 @@ export async function requestChunkUploadTicket(
 ): Promise<Result<ChunkUploadTicket>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
-  if (!can(session.role, 'aiIntelligence:create')) return permissionError();
+  if (!sessionCan(session, 'aiIntelligence:create')) return permissionError();
 
   const parsed = requestChunkUploadSchema.safeParse(input);
   if (!parsed.success) {
@@ -208,7 +209,7 @@ export async function confirmChunkUpload(
 ): Promise<Result<{ status: 'uploaded' | 'failed' }>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
-  if (!can(session.role, 'aiIntelligence:create')) return permissionError();
+  if (!sessionCan(session, 'aiIntelligence:create')) return permissionError();
 
   const parsed = confirmChunkUploadSchema.safeParse(input);
   if (!parsed.success) return validationError({ sessionId: 'Invalid chunk reference.' });
@@ -300,7 +301,7 @@ export async function pauseSessionRecording(
 ): Promise<Result<{ status: 'paused' }>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
-  if (!can(session.role, 'aiIntelligence:create')) return permissionError();
+  if (!sessionCan(session, 'aiIntelligence:create')) return permissionError();
 
   const parsed = pauseSessionRecordingSchema.safeParse(input);
   if (!parsed.success) return validationError({ sessionId: 'Invalid session reference.' });
@@ -328,7 +329,7 @@ export async function resumeSessionRecording(
 ): Promise<Result<{ status: 'recording' }>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
-  if (!can(session.role, 'aiIntelligence:create')) return permissionError();
+  if (!sessionCan(session, 'aiIntelligence:create')) return permissionError();
 
   const parsed = resumeSessionRecordingSchema.safeParse(input);
   if (!parsed.success) return validationError({ sessionId: 'Invalid session reference.' });
@@ -355,7 +356,7 @@ export async function finalizeSessionRecording(
 ): Promise<Result<{ jobId: string }>> {
   const session = await getSession();
   if (!session) return permissionError('Sign in required.');
-  if (!can(session.role, 'aiIntelligence:create')) return permissionError();
+  if (!sessionCan(session, 'aiIntelligence:create')) return permissionError();
 
   const parsed = finalizeSessionRecordingSchema.safeParse(input);
   if (!parsed.success) {
@@ -460,5 +461,75 @@ export async function finalizeSessionRecording(
       totalDurationSeconds,
     });
     return internalError('Could not finalize the recording. Please try again.');
+  }
+}
+
+/**
+ * Recovery path for the "non-controlling" state `SessionRecorder` shows when
+ * the tab that clicked Start recording is gone (closed, crashed, lost its
+ * network) — no browser anywhere still holds the `totalChunks`/
+ * `totalDurationSeconds` that `finalizeSessionRecording` normally needs, so
+ * this derives them instead from whatever chunks actually reached Storage
+ * (`computeUploadedRecordingExtent`) and finalizes with those. Gated on
+ * `aiIntelligence:configure` (not `:create`) — this is deliberately an admin
+ * action, never the recording trainer's own, since a trainer with a live tab
+ * should always use the normal Stop button there instead.
+ */
+export async function adminStopStalledSession(
+  input: StartSessionRecordingInput,
+): Promise<Result<{ jobId: string }>> {
+  const session = await getSession();
+  if (!session) return permissionError('Sign in required.');
+  if (!sessionCan(session, 'aiIntelligence:configure')) return permissionError();
+
+  const parsed = startSessionRecordingSchema.safeParse(input);
+  if (!parsed.success) return validationError({ sessionId: 'Invalid session reference.' });
+  const { sessionId } = parsed.data;
+
+  try {
+    const meta = await findSessionMeta(sessionId);
+    if (!meta) return notFoundError('Session not found.');
+    if (meta.status !== 'recording' && meta.status !== 'paused') {
+      return conflictError('This session is not currently recording or paused.');
+    }
+
+    const extent = await computeUploadedRecordingExtent(sessionId);
+    if (!extent) {
+      return conflictError(
+        'No recording has finished uploading for this session yet, so there is nothing to save. Try again in a few minutes, or contact support.',
+      );
+    }
+
+    const jobId = await finalizeSessionAndEnqueue(
+      sessionId,
+      meta.title,
+      extent.totalChunks,
+      extent.totalDurationSeconds,
+      session.uid,
+      extent.capturedChannelCount,
+    );
+
+    await writeAudit({
+      actorUid: session.uid,
+      actorRole: session.role,
+      action: 'update',
+      entityType: 'ai_session',
+      entityId: sessionId,
+      entityPath: `aiSessions/${sessionId}`,
+      changes: { status: { before: meta.status, after: 'processing' } },
+      context: { feature: 'ai-intelligence', reason: 'admin_stopped_orphaned_session' },
+    });
+
+    logChunkEvent('session admin-stopped', {
+      sessionId,
+      jobId,
+      stoppedBy: session.uid,
+      totalChunks: extent.totalChunks,
+      totalDurationSeconds: extent.totalDurationSeconds,
+    });
+    return ok({ jobId });
+  } catch (error) {
+    logChunkError('adminStopStalledSession failed', error, { sessionId });
+    return internalError('Could not stop the session. Please try again.');
   }
 }

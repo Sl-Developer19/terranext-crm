@@ -533,6 +533,58 @@ export async function findSessionChunks(sessionId: string): Promise<AiSessionChu
 }
 
 /**
+ * Reconstructs how much of a recording actually reached Storage, purely from
+ * confirmed chunk documents — the admin "stop this session" recovery path
+ * (`adminStopStalledSession`) for when the tab that was recording is gone and
+ * nothing client-side remains to report `totalChunks`/`totalDurationSeconds`
+ * the way `finalizeSessionRecording` normally expects.
+ *
+ * Chunk indices are contiguous by construction (see `startNextChunkRecorder`
+ * in `SessionRecorder`), so the first index whose expected channels aren't
+ * all `uploaded` — a rollover that never finished because the tab died mid
+ * chunk — marks the end of what can be trusted; anything from that index on
+ * is dropped rather than guessed at. Returns `null` when not even chunk 0
+ * finished uploading, i.e. there is nothing yet to save.
+ */
+export async function computeUploadedRecordingExtent(sessionId: string): Promise<{
+  totalChunks: number;
+  totalDurationSeconds: number;
+  capturedChannelCount: number;
+} | null> {
+  const chunks = await findSessionChunks(sessionId);
+  if (chunks.length === 0) return null;
+
+  const byChunkIndex = new Map<number, AiSessionChunk[]>();
+  let maxChunkIndex = 0;
+  for (const chunk of chunks) {
+    maxChunkIndex = Math.max(maxChunkIndex, chunk.chunkIndex);
+    const group = byChunkIndex.get(chunk.chunkIndex) ?? [];
+    group.push(chunk);
+    byChunkIndex.set(chunk.chunkIndex, group);
+  }
+
+  const chunk0Group = byChunkIndex.get(0) ?? [];
+  const capturedChannelCount = chunk0Group.some((chunk) => chunk.channelIndex !== null)
+    ? new Set(chunk0Group.map((chunk) => chunk.channelIndex)).size
+    : 1;
+
+  let totalChunks = 0;
+  let totalDurationSeconds = 0;
+  for (let index = 0; index <= maxChunkIndex; index++) {
+    const uploaded = (byChunkIndex.get(index) ?? []).filter((chunk) => chunk.status === 'uploaded');
+    if (uploaded.length !== capturedChannelCount) break;
+    totalChunks = index + 1;
+    for (const chunk of uploaded) {
+      const end = chunk.startOffsetSec + (chunk.durationSeconds ?? 0);
+      if (end > totalDurationSeconds) totalDurationSeconds = end;
+    }
+  }
+
+  if (totalChunks === 0) return null;
+  return { totalChunks, totalDurationSeconds, capturedChannelCount };
+}
+
+/**
  * Confirms every expected chunk uploaded and enqueues processing — the
  * automatic pipeline's entry point. Also closes out a trailing open pause
  * event (the trainer clicked Stop while paused, never Resume) so

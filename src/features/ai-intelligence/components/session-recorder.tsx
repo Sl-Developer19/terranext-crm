@@ -28,6 +28,7 @@ import {
 import { cn } from '@/lib/utils/cn';
 
 import {
+  adminStopStalledSession,
   confirmChunkUpload,
   finalizeSessionRecording,
   pauseSessionRecording,
@@ -168,6 +169,7 @@ export function SessionRecorder({
   session,
   defaultRecordingSource,
   channelRoleMap = [],
+  canAdminStop = false,
 }: {
   session: AiSession;
   /** Classroom Hardware Mode default from Settings — a hint for which
@@ -182,8 +184,30 @@ export function SessionRecorder({
    * `components/settings-form.tsx`. A non-empty mapping is what actually
    * switches `handleStart` into requesting a multi-channel stream. */
   channelRoleMap?: ChannelRoleMapping[];
+  /** Whether the viewer holds `aiIntelligence:configure` — the only role the
+   * non-controlling card's "Stop this session" recovery button is offered
+   * to, matching what that card's own copy promises ("a System Administrator
+   * can stop this session"). */
+  canAdminStop?: boolean;
 }) {
   const router = useRouter();
+  const [isAdminStopping, setIsAdminStopping] = React.useState(false);
+
+  async function handleAdminStopClick() {
+    if (isAdminStopping) return;
+    setIsAdminStopping(true);
+    try {
+      const outcome = await adminStopStalledSession({ sessionId: session.id });
+      if (!outcome.ok) {
+        toast.error(outcome.error.message);
+        return;
+      }
+      toast.success('Session stopped — transcription and AI analysis started automatically.');
+      router.refresh();
+    } finally {
+      setIsAdminStopping(false);
+    }
+  }
   const [devices, setDevices] = React.useState<AudioDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = React.useState('');
   const [status, setStatus] = React.useState<RecorderStatus>('idle');
@@ -1164,14 +1188,33 @@ export function SessionRecorder({
   if (viewMode === 'non-controlling') {
     return (
       <Card>
-        <CardContent className="pt-6 text-sm text-muted-foreground">
-          This session is currently{' '}
-          <strong className="font-medium text-foreground">{session.status}</strong> in another
-          browser tab. Recording controls (Pause, Resume, Stop) are only available in the tab where{' '}
-          <strong className="font-medium text-foreground">Start recording</strong> was clicked — go
-          back to that tab to control it. Anything already uploaded is safely saved. If that tab was
-          closed, a System Administrator can stop this session without losing the recording,
-          transcript, or summary generated so far.
+        <CardContent className="space-y-4 pt-6 text-sm text-muted-foreground">
+          <p>
+            This session is currently{' '}
+            <strong className="font-medium text-foreground">{session.status}</strong> in another
+            browser tab. Recording controls (Pause, Resume, Stop) are only available in the tab
+            where <strong className="font-medium text-foreground">Start recording</strong> was
+            clicked — go back to that tab to control it. Anything already uploaded is safely saved.
+            If that tab was closed, a System Administrator can stop this session without losing the
+            recording, transcript, or summary generated so far.
+          </p>
+          {canAdminStop ? (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="destructive"
+                disabled={isAdminStopping}
+                loading={isAdminStopping}
+                onClick={() => void handleAdminStopClick()}
+              >
+                <Square aria-hidden />
+                Stop this session
+              </Button>
+              <p className="text-xs">
+                Finalizes whatever has already been uploaded and starts transcription — use this
+                only if the recording tab is gone for good.
+              </p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     );

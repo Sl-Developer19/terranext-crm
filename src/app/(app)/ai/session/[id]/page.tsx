@@ -21,6 +21,7 @@ import {
   getSessionChatMessages,
   getSessionDetail,
 } from '@/features/ai-intelligence';
+import { sessionCan } from '@/lib/rbac/permissions';
 import { requirePermission } from '@/lib/rbac/require';
 
 export const metadata: Metadata = { title: 'AI Intelligence — Session' };
@@ -32,11 +33,11 @@ export default async function AiSessionDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await requirePermission('aiIntelligence:view');
+  const authSession = await requirePermission('aiIntelligence:view');
   const { id } = await params;
   const { tab } = await searchParams;
 
-  const { session, transcript, summary } = await getSessionDetail(id);
+  const { session, transcript, summary } = await getSessionDetail(id, authSession);
   if (!session) notFound();
 
   const isProcessing = session.status === 'processing';
@@ -63,6 +64,7 @@ export default async function AiSessionDetailPage({
         session={session}
         defaultRecordingSource={settings?.defaultRecordingSource ?? 'laptop_microphone'}
         channelRoleMap={settings?.channelRoleMap ?? []}
+        canAdminStop={sessionCan(authSession, 'aiIntelligence:configure')}
       />
 
       <SessionTimeline session={session} />
